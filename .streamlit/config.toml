@@ -4,5 +4,11 @@
 showSidebarNavigation = false
 
 [theme]
+# Restrained clinical palette: slate blue accent on cool neutrals.
+# Match-state colours live in app/theme.py, not here.
 base = "light"
-primaryColor = "#1F5F8B"
+primaryColor = "#2B5F75"
+backgroundColor = "#FAFBFC"
+secondaryBackgroundColor = "#EEF2F5"
+textColor = "#1D2730"
+font = "sans serif"
