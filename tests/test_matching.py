@@ -99,3 +99,49 @@ def test_five_core_matching_cases(row, expected):
     assert finding.row_id == row.row_id
     assert finding.state is expected
     assert finding.evidence_span_ids
+
+
+def test_no_notice_codes_incomplete():
+    item = replace(NOTICE, codes=())
+    assert classify(STOCK_A, item).state is MatchState.CHECK_INCOMPLETE
+
+
+def test_no_scope_incomplete():
+    item = replace(NOTICE, lot_scope=LotScope.UNSPECIFIED)
+    assert classify(STOCK_A, item).state is MatchState.CHECK_INCOMPLETE
+
+
+def test_missing_code_needs_evidence():
+    row = replace(
+        STOCK_A,
+        codes=(Code("UK_PL", "04595/0011"),),
+    )
+    assert classify(row, NOTICE).state is MatchState.NEEDS_EVIDENCE
+
+
+def test_same_codes_different_name_conflict():
+    row = replace(STOCK_A, product_raw="Different Demo Medicine")
+    assert classify(row, NOTICE).state is MatchState.CONFLICTING_IDENTIFIERS
+
+
+def test_all_lots_explicit():
+    item = replace(NOTICE, lot_scope=LotScope.ALL_LOTS, lots=())
+    row = replace(STOCK_A, lot_raw=None)
+    assert classify(row, item).state is MatchState.EXACT_CANDIDATE
+
+
+def test_leading_zero_preserved():
+    item = replace(NOTICE, lots=("00123",))
+    row = replace(STOCK_A, lot_raw="123")
+    assert classify(row, item).state is MatchState.NOT_MATCHED
+
+
+def test_conflicting_codes_one_match():
+    row = replace(
+        STOCK_A,
+        codes=(
+            Code("UK_PL", "04595/0011"),
+            Code("GTIN", "WRONG"),
+        ),
+    )
+    assert classify(row, NOTICE).state is MatchState.CONFLICTING_IDENTIFIERS
