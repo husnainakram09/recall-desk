@@ -93,6 +93,8 @@ STOCK_A = InventoryRow(
         ),
     ],
 )
+
+
 def test_five_core_matching_cases(row, expected):
     finding = classify(row, NOTICE)
 
@@ -225,3 +227,40 @@ def test_unicode_dash_range_needs_evidence():
     finding = classify(row, item)
 
     assert finding.state is MatchState.NEEDS_EVIDENCE
+
+
+@pytest.mark.parametrize(
+    ("stock_lot", "expected"),
+    [
+        pytest.param(
+            "AB-123",
+            MatchState.EXACT_CANDIDATE,
+            id="listed-exact-batch",
+        ),
+        pytest.param(
+            "MD4L09",
+            MatchState.NEEDS_EVIDENCE,
+            id="possible-range-member",
+        ),
+        pytest.param(
+            "ZZ9TEST",
+            MatchState.NEEDS_EVIDENCE,
+            id="unresolved-range-prevents-exclusion",
+        ),
+    ],
+)
+def test_mixed_exact_lot_and_unresolved_range(stock_lot, expected):
+    item = replace(
+        NOTICE,
+        lots=("AB-123", "MD4L07 to MD4L10"),
+    )
+    row = replace(STOCK_A, lot_raw=stock_lot)
+
+    finding = classify(row, item)
+
+    assert finding.state is expected
+
+    if expected is MatchState.EXACT_CANDIDATE:
+        assert "lot" in finding.matched_fields
+    else:
+        assert "lot_scope" in finding.missing_fields
