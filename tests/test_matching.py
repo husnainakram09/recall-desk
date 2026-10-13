@@ -145,3 +145,30 @@ def test_conflicting_codes_one_match():
         ),
     )
     assert classify(row, NOTICE).state is MatchState.CONFLICTING_IDENTIFIERS
+
+def test_matching_lot_visible_despite_strength_conflict():
+    row = replace(
+        STOCK_A,
+        row_id="D2",
+        strength=Strength(10.0, "mg"),
+    )
+
+    finding = classify(row, NOTICE)
+
+    assert finding.state is MatchState.CONFLICTING_IDENTIFIERS
+    assert "lot" in finding.matched_fields
+    assert "strength" in finding.conflicting_fields
+
+
+def test_other_lot_explanation_is_specific():
+    row = replace(
+        STOCK_A,
+        row_id="B2",
+        lot_raw="ZZ9TEST",
+    )
+
+    finding = classify(row, NOTICE)
+
+    assert finding.state is MatchState.NOT_MATCHED
+    assert "lot" in finding.next_evidence.lower()
+    assert "safety" in finding.next_evidence.lower()

@@ -34,6 +34,9 @@ def classify(row: InventoryRow, item: NoticeItem) -> Finding:
             "Confirm the notice source, identifiers and lot scope.",
         )
 
+    if lot == "match" and not identity.different_product:
+        matched.append("lot")
+
     if identity.different_product:
         return finding(
             MatchState.NOT_MATCHED,
@@ -68,5 +71,6 @@ def classify(row: InventoryRow, item: NoticeItem) -> Finding:
 
     return finding(
         MatchState.NOT_MATCHED,
+        "The recorded lot is not listed in this notice. "
         "Check other notices; no match does not establish safety.",
     )
