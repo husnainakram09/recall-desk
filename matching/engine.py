@@ -62,6 +62,15 @@ def classify(row: InventoryRow, item: NoticeItem) -> Finding:
             "Read the batch code on the blister or receiving record.",
         )
 
+    if lot == "ambiguous":
+        missing.append("lot_scope")
+        return finding(
+            MatchState.NEEDS_EVIDENCE,
+            "Possible batch range or grouped batch expression. "
+            "Verify the affected lot scope against the original "
+            "notice before excluding this stock record.",
+        )
+
     if lot == "match":
         matched.append("lot_scope")
         return finding(

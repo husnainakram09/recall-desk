@@ -172,3 +172,56 @@ def test_other_lot_explanation_is_specific():
     assert finding.state is MatchState.NOT_MATCHED
     assert "lot" in finding.next_evidence.lower()
     assert "safety" in finding.next_evidence.lower()
+
+def test_unsupported_lot_range_needs_evidence():
+    item = replace(
+        NOTICE,
+        lots=("MD4L07 to MD4L10",),
+    )
+
+    row = replace(
+        STOCK_A,
+        row_id="RANGE-01",
+        lot_raw="MD4L08",
+    )
+
+    finding = classify(row, item)
+
+    assert finding.state is MatchState.NEEDS_EVIDENCE
+
+
+def test_literal_hyphenated_batch_can_match():
+    item = replace(NOTICE, lots=("AB-123",))
+    row = replace(STOCK_A, lot_raw="AB-123")
+
+    finding = classify(row, item)
+
+    assert finding.state is MatchState.EXACT_CANDIDATE
+
+
+def test_literal_hyphenated_batch_can_be_excluded():
+    item = replace(NOTICE, lots=("AB-123",))
+    row = replace(STOCK_A, lot_raw="AB-124")
+
+    finding = classify(row, item)
+
+    assert finding.state is MatchState.NOT_MATCHED
+
+
+def test_compact_range_needs_evidence():
+    item = replace(NOTICE, lots=("MD4L07-MD4L10",))
+    row = replace(STOCK_A, lot_raw="MD4L08")
+
+    finding = classify(row, item)
+
+    assert finding.state is MatchState.NEEDS_EVIDENCE
+    assert "lot_scope" in finding.missing_fields
+
+
+def test_unicode_dash_range_needs_evidence():
+    item = replace(NOTICE, lots=("MD4L07–MD4L10",))
+    row = replace(STOCK_A, lot_raw="MD4L08")
+
+    finding = classify(row, item)
+
+    assert finding.state is MatchState.NEEDS_EVIDENCE
