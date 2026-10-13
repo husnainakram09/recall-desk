@@ -6,7 +6,16 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import Enum
 
-from contracts import Code, InventoryRow, LotScope, NoticeItem, Strength
+from contracts import (
+    Code,
+    Finding,
+    InventoryRow,
+    LotScope,
+    MatchState,
+    NoticeItem,
+    Strength,
+)
+from matching.engine import classify
 
 
 @dataclass(frozen=True)
@@ -234,3 +243,129 @@ def append_revision(
         )
 
     return revision
+
+
+@dataclass(frozen=True)
+class StoredFinding:
+    """A finding associated with one case revision."""
+
+    case_id: str
+    revision: int
+    item_index: int
+    finding: Finding
+    is_current: bool
+
+
+def store_findings(
+    conn: sqlite3.Connection,
+    case_id: str,
+    revision: int | None = None,
+) -> tuple[StoredFinding, ...]:
+    """Classify saved evidence and persist its findings atomically."""
+    snapshot = get_revision(conn, case_id, revision)
+
+    if snapshot.revision != get_revision(conn, case_id).revision:
+        raise ValueError("Cannot classify a superseded revision.")
+
+    timestamp = _timestamp()
+
+    with conn:
+        for item_index, item in enumerate(snapshot.notice_items):
+            for row in snapshot.stock_rows:
+                missing_reviews = tuple(
+                    field
+                    for field, verified in (
+                        ("source_verified", snapshot.source_verified),
+                        ("scope_reviewed", snapshot.scope_reviewed),
+                    )
+                    if not verified
+                )
+
+                if missing_reviews:
+                    finding = Finding(
+                        row_id=row.row_id,
+                        state=MatchState.CHECK_INCOMPLETE,
+                        matched_fields=(),
+                        missing_fields=missing_reviews,
+                        conflicting_fields=(),
+                        next_evidence=(
+                            "Verify the notice source and affected "
+                            "lot scope before classification."
+                        ),
+                        evidence_span_ids=item.evidence_span_ids,
+                    )
+                else:
+                    finding = classify(row, item)
+
+                payload = json.dumps(
+                    asdict(finding),
+                    default=_enum_default,
+                    sort_keys=True,
+                )
+
+                conn.execute(
+                    """
+                    INSERT INTO findings (
+                        case_id, revision, row_id, item_index,
+                        state, finding_json, created_at_utc
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        case_id,
+                        snapshot.revision,
+                        row.row_id,
+                        item_index,
+                        finding.state.value,
+                        payload,
+                        timestamp,
+                    ),
+                )
+
+    return load_findings(conn, case_id, snapshot.revision)
+
+
+def load_findings(
+    conn: sqlite3.Connection,
+    case_id: str,
+    revision: int | None = None,
+) -> tuple[StoredFinding, ...]:
+    """Load previously stored findings without recalculation."""
+    snapshot = get_revision(conn, case_id, revision)
+    latest_revision = get_revision(conn, case_id).revision
+
+    records = conn.execute(
+        """
+        SELECT *
+        FROM findings
+        WHERE case_id = ? AND revision = ?
+        ORDER BY row_id, item_index
+        """,
+        (case_id, snapshot.revision),
+    ).fetchall()
+
+    results = []
+
+    for record in records:
+        data = json.loads(record["finding_json"])
+
+        finding = Finding(
+            row_id=data["row_id"],
+            state=MatchState(data["state"]),
+            matched_fields=tuple(data["matched_fields"]),
+            missing_fields=tuple(data["missing_fields"]),
+            conflicting_fields=tuple(data["conflicting_fields"]),
+            next_evidence=data["next_evidence"],
+            evidence_span_ids=tuple(data["evidence_span_ids"]),
+        )
+
+        results.append(
+            StoredFinding(
+                case_id=case_id,
+                revision=snapshot.revision,
+                item_index=record["item_index"],
+                finding=finding,
+                is_current=(snapshot.revision == latest_revision),
+            )
+        )
+
+    return tuple(results)
