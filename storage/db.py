@@ -3,6 +3,8 @@
 import sqlite3
 from pathlib import Path
 
+from storage.audit import install_append_only_guards
+
 
 def connect(path: str | Path) -> sqlite3.Connection:
     """Open a SQLite database with foreign keys enforced."""
@@ -82,3 +84,5 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
         """
     )
+
+    install_append_only_guards(conn)
