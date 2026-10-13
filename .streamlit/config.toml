@@ -1,0 +1,8 @@
+[client]
+# Navigation is the sidebar selector in main.py; hide the auto-generated
+# links Streamlit would otherwise build from app/pages/.
+showSidebarNavigation = false
+
+[theme]
+base = "light"
+primaryColor = "#1F5F8B"
