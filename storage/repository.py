@@ -2,7 +2,8 @@
 
 import json
 import sqlite3
-from dataclasses import asdict, dataclass
+from contextlib import nullcontext
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from enum import Enum
 
@@ -192,16 +193,26 @@ def append_revision(
     *,
     notice_items=None,
     stock_rows=None,
+    expected_revision: int | None = None,
     source_verified: bool = False,
     scope_reviewed: bool = False,
+    _manage_transaction: bool = True,
 ) -> int:
     """Append new evidence; never modify the previous snapshot.
 
     Review flags default to false so a new revision cannot
     silently inherit an earlier verification.
     """
-    with conn:
+    with conn if _manage_transaction else nullcontext():
         previous = get_revision(conn, case_id)
+
+        if (
+           expected_revision is not None
+           and previous.revision != expected_revision
+        ):
+           raise ValueError(
+               "Stale revision: reopen the case before editing."
+        )
 
         new_notice = tuple(
             previous.notice_items if notice_items is None
@@ -261,6 +272,8 @@ def store_findings(
     conn: sqlite3.Connection,
     case_id: str,
     revision: int | None = None,
+    *,
+    _manage_transaction: bool = True,
 ) -> tuple[StoredFinding, ...]:
     """Classify saved evidence and persist its findings atomically."""
     snapshot = get_revision(conn, case_id, revision)
@@ -270,7 +283,7 @@ def store_findings(
 
     timestamp = _timestamp()
 
-    with conn:
+    with conn if _manage_transaction else nullcontext():
         for item_index, item in enumerate(snapshot.notice_items):
             for row in snapshot.stock_rows:
                 missing_reviews = tuple(
@@ -546,3 +559,59 @@ def list_cases(
         )
         for record in records
     )
+
+
+def correct_stock_lot(
+    conn: sqlite3.Connection,
+    case_id: str,
+    *,
+    expected_revision: int,
+    row_id: str,
+    lot_raw: str | None,
+) -> int:
+    """Save a batch correction as a new unverified evidence revision."""
+    snapshot = get_revision(conn, case_id)
+
+    if snapshot.revision != expected_revision:
+        raise ValueError("Stale revision: reopen the case before editing.")
+
+    if lot_raw is not None and not isinstance(lot_raw, str):
+        raise TypeError("Batch code must be text or None.")
+
+    # Empty input means the batch is no longer known.
+    new_lot = None if lot_raw is None or not lot_raw.strip() else lot_raw
+
+    target = next(
+        (row for row in snapshot.stock_rows if row.row_id == row_id),
+        None,
+    )
+    if target is None:
+        raise KeyError(f"Unknown stock row: {row_id}")
+
+    if target.lot_raw == new_lot:
+        raise ValueError("Batch code is unchanged.")
+
+    revised_stock = tuple(
+        replace(row, lot_raw=new_lot)
+        if row.row_id == row_id
+        else row
+        for row in snapshot.stock_rows
+    )
+
+    with conn:
+        revision = append_revision(
+            conn,
+            case_id,
+            stock_rows=revised_stock,
+            expected_revision=expected_revision,
+            _manage_transaction=False,
+        )
+
+        store_findings(
+            conn,
+            case_id,
+            revision,
+            _manage_transaction=False,
+        )
+
+    return revision

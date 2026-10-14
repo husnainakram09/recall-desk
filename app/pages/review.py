@@ -4,17 +4,21 @@ This screen does not authenticate pharmacists or approve findings.
 All results remain provisional until source and scope review.
 """
 
+import sqlite3
 from dataclasses import replace
 
 import streamlit as st
 
 from app import session, theme
 from app.pages.review_cases import (
+    DB_PATH,
     SOURCE_SNAPSHOT_KEY,
     render_case_controls,
 )
 from app.pages.review_decisions import render_review_decisions
 from matching.engine import classify
+from storage.db import connect
+from storage.repository import correct_stock_lot
 
 
 def render() -> None:
@@ -184,7 +188,7 @@ def render() -> None:
         st.write("**Conflicting**")
         st.write(", ".join(finding.conflicting_fields) or "None")
 
-        render_review_decisions(
+    render_review_decisions(
         saved_case,
         row.row_id,
         item_index,
@@ -192,11 +196,12 @@ def render() -> None:
     )
 
     st.divider()
-    st.subheader("Preview a batch correction")
+    st.subheader("Correct stock batch")
 
     st.caption(
-        "For synthetic demonstration only. This preview does "
-        "not save inventory changes or approve a finding."
+        "Preview a synthetic batch correction, or save it as  "
+        "a new evidence revision. Saving resets source and "
+        "scope review flags and requires fresh review."
     )
 
     with st.form("lot_preview"):
@@ -213,25 +218,69 @@ def render() -> None:
             "Preview corrected finding"
         )
 
-    if preview_clicked:
+        save_clicked = st.form_submit_button(
+            "Save correction as new revision",
+            disabled=saved_case is None,
+        )
+
+    if saved_case is None:
+        st.caption(
+            "Save or open a case above to enable "
+            "persistent corrections."
+        )
+
+    if preview_clicked or save_clicked:
         if not confirmed:
             st.warning(
-                "Confirm that evidence was checked before "
-                "previewing a corrected record."
+                "Confirm the batch evidence before continuing."
             )
+
         elif not new_lot.strip():
-            st.warning("Enter the batch code to preview.")
+            st.warning("Enter a non-empty batch code.")
+
+        elif save_clicked:
+            conn = connect(DB_PATH)
+
+            try:
+                revision = correct_stock_lot(
+                    conn,
+                    saved_case.case_id,
+                    expected_revision=saved_case.revision,
+                    row_id=row.row_id,
+                    lot_raw=new_lot,
+                )
+
+            except (
+                ValueError,
+                KeyError,
+                TypeError,
+                sqlite3.IntegrityError,
+            ) as exc:
+                st.error(f"Correction was not saved: {exc}")
+
+            else:
+                st.success(
+                    f"Correction saved as revision {revision}. "
+                    "Previous review decisions are now historical."
+                )
+                st.rerun()
+
+            finally:
+                conn.close()
+
         else:
             amended = replace(row, lot_raw=new_lot)
             preview = classify(amended, item)
 
-            st.write("**Preview result:**")
+            st.write("**Provisional preview result:**")
             theme.state_badge(preview.state)
-            st.write(preview.next_evidence)
+            st.write(
+                preview.next_evidence or
+                "Manual review still required."
+            )
 
             st.caption(
-                "Not saved. A real correction must create a "
-                "new stock revision and require fresh review."
+                 "Preview only. No inventory revision was saved."
             )
 
     st.caption(

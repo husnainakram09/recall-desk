@@ -6,10 +6,14 @@ from dataclasses import replace
 
 import pytest
 
+from contracts import MatchState
 from storage.db import connect, init_db
 from storage.repository import (
     append_revision,
+    correct_stock_lot,
     create_case,
+    get_revision,
+    load_findings,
     load_review_decisions,
     record_review_decision,
     store_findings,
@@ -145,3 +149,117 @@ def test_blank_reviewer_rejected(ready_case):
 
     with pytest.raises(ValueError):
         _record(conn, reviewer_label="   ")
+
+
+def test_corrected_lot_creates_new_revision(ready_case):
+    conn, _ = ready_case
+
+    _record(conn)
+
+    revision = correct_stock_lot(
+        conn,
+        "DEMO-REVIEW",
+        expected_revision=1,
+        row_id="A",
+        lot_raw="ZZ9TEST",
+    )
+
+    old = get_revision(conn, "DEMO-REVIEW", 1)
+    new = get_revision(conn, "DEMO-REVIEW")
+
+    assert revision == 2
+    assert old.stock_rows[0].lot_raw == STOCK.lot_raw
+    assert new.stock_rows[0].lot_raw == "ZZ9TEST"
+    assert new.stock_version == 2
+    assert not new.source_verified
+    assert not new.scope_reviewed
+
+    finding = load_findings(conn, "DEMO-REVIEW")[0].finding
+    assert finding.state is MatchState.CHECK_INCOMPLETE
+
+    history = load_review_decisions(conn, "DEMO-REVIEW")
+    assert len(history) == 1
+    assert history[0].is_current is False
+
+
+def test_stale_stock_edit_rejected(ready_case):
+    conn, _ = ready_case
+
+    correct_stock_lot(
+        conn,
+        "DEMO-REVIEW",
+        expected_revision=1,
+        row_id="A",
+        lot_raw="ZZ9TEST",
+    )
+
+    with pytest.raises(ValueError, match="Stale"):
+        correct_stock_lot(
+            conn,
+            "DEMO-REVIEW",
+            expected_revision=1,
+            row_id="A",
+            lot_raw="MD4L08",
+        )
+
+
+def test_unknown_stock_row_rejected(ready_case):
+    conn, _ = ready_case
+
+    with pytest.raises(KeyError):
+        correct_stock_lot(
+            conn,
+            "DEMO-REVIEW",
+            expected_revision=1,
+            row_id="UNKNOWN",
+            lot_raw="ZZ9TEST",
+        )
+
+
+def test_unchanged_batch_rejected(ready_case):
+    conn, _ = ready_case
+
+    with pytest.raises(ValueError, match="unchanged"):
+        correct_stock_lot(
+            conn,
+            "DEMO-REVIEW",
+            expected_revision=1,
+            row_id="A",
+            lot_raw=STOCK.lot_raw,
+        )
+
+
+def test_stock_correction_rolls_back_if_findings_fail(
+    ready_case,
+    monkeypatch,
+):
+    conn, _ = ready_case
+    _record(conn)
+
+    def fail_to_store(*args, **kwargs):
+        raise RuntimeError("Simulated finding-storage failure")
+
+    monkeypatch.setattr(
+        "storage.repository.store_findings",
+        fail_to_store,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Simulated finding-storage failure",
+    ):
+        correct_stock_lot(
+            conn,
+            "DEMO-REVIEW",
+            expected_revision=1,
+            row_id="A",
+            lot_raw="ZZ9TEST",
+        )
+
+    # No partially saved revision should survive.
+    assert get_revision(conn, "DEMO-REVIEW").revision == 1
+
+    # The original decision must remain current.
+    history = load_review_decisions(conn, "DEMO-REVIEW")
+    assert len(history) == 1
+    assert history[0].is_current
