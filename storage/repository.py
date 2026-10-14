@@ -506,3 +506,43 @@ def load_review_decisions(
         )
         for record in records
     )
+
+
+@dataclass(frozen=True)
+class CaseSummary:
+    """A saved case available for reopening."""
+
+    case_id: str
+    source_url: str
+    latest_revision: int
+    created_at_utc: str
+
+
+def list_cases(
+    conn: sqlite3.Connection,
+) -> tuple[CaseSummary, ...]:
+    """List saved cases with their latest evidence revisions."""
+    records = conn.execute(
+        """
+        SELECT
+            c.case_id,
+            c.source_url,
+            c.created_at_utc,
+            MAX(v.revision) AS latest_revision
+        FROM cases AS c
+        JOIN case_versions AS v
+          ON v.case_id = c.case_id
+        GROUP BY c.case_id
+        ORDER BY c.created_at_utc DESC, c.case_id
+        """
+    ).fetchall()
+
+    return tuple(
+        CaseSummary(
+            case_id=record["case_id"],
+            source_url=record["source_url"],
+            latest_revision=record["latest_revision"],
+            created_at_utc=record["created_at_utc"],
+        )
+        for record in records
+    )
