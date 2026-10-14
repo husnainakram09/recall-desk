@@ -9,6 +9,10 @@ from dataclasses import replace
 import streamlit as st
 
 from app import session, theme
+from app.pages.review_cases import (
+    SOURCE_SNAPSHOT_KEY,
+    render_case_controls,
+)
 from matching.engine import classify
 
 
@@ -22,8 +26,14 @@ def render() -> None:
         "medicine safety."
     )
 
-    rows = st.session_state.get(session.INVENTORY) or []
-    items = st.session_state.get(session.NOTICE_ITEMS) or []
+    saved_case, saved_findings = render_case_controls()
+
+    if saved_case is None:
+        rows = st.session_state.get(session.INVENTORY) or []
+        items = st.session_state.get(session.NOTICE_ITEMS) or []
+    else:
+        rows = saved_case.stock_rows
+        items = saved_case.notice_items
 
     if not rows:
         st.info("Import synthetic stock on the Import Stock page.")
@@ -49,7 +59,23 @@ def render() -> None:
 
     row = rows[row_index]
     item = items[item_index]
-    finding = classify(row, item)
+
+    if saved_case is None:
+        finding = classify(row, item)
+    else:
+        finding = next(
+        (
+            stored.finding
+            for stored in saved_findings
+            if stored.finding.row_id == row.row_id
+            and stored.item_index == item_index
+        ),
+        None,
+    )
+
+    if finding is None:
+        st.error("This saved case has no stored finding for the selected row.")
+        return
 
     st.subheader("Provisional finding")
     theme.state_badge(finding.state)
@@ -105,7 +131,15 @@ def render() -> None:
                 st.write(code.system)
                 theme.identifier(code.value)
 
-        notice = st.session_state.get(session.NOTICE_TEXT)
+        if saved_case is None:
+            notice = st.session_state.get(session.NOTICE_TEXT)
+        else:
+            source_snapshot = st.session_state.get(SOURCE_SNAPSHOT_KEY)
+            notice = (
+            source_snapshot[1]
+        if source_snapshot and source_snapshot[0] == saved_case.case_id
+        else None
+        )
 
         if notice is not None:
             spans = {span.id: span for span in notice.spans}
