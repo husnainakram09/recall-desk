@@ -66,6 +66,67 @@ def init_db(conn: sqlite3.Connection) -> None:
                 REFERENCES case_versions(case_id, revision)
         );
 
+
+        CREATE TABLE IF NOT EXISTS review_decisions (
+            decision_id INTEGER PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            row_id TEXT NOT NULL,
+            item_index INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            reviewer_label TEXT NOT NULL
+              CHECK (length(trim(reviewer_label)) > 0),
+            reviewer_role TEXT NOT NULL
+              CHECK (reviewer_role = 'Pharmacist'),
+            note TEXT NOT NULL DEFAULT '',
+            decided_at_utc TEXT NOT NULL,
+
+        UNIQUE (case_id, revision, row_id, item_index),
+
+        FOREIGN KEY (case_id, revision, row_id, item_index)
+        REFERENCES findings (
+            case_id, revision, row_id, item_index
+        )
+        );
+
+        CREATE TRIGGER IF NOT EXISTS validate_review_decision
+        BEFORE INSERT ON review_decisions
+        WHEN NOT EXISTS (
+        SELECT 1
+        FROM findings AS f
+        JOIN case_versions AS v
+        ON v.case_id = f.case_id
+        AND v.revision = f.revision
+        WHERE f.case_id = NEW.case_id
+        AND f.revision = NEW.revision
+        AND f.row_id = NEW.row_id
+        AND f.item_index = NEW.item_index
+        AND v.source_verified = 1
+        AND v.scope_reviewed = 1
+        AND v.revision = (
+          SELECT MAX(revision)
+          FROM case_versions
+          WHERE case_id = NEW.case_id
+        )
+        AND (
+          (f.state = 'exact_candidate'
+           AND NEW.action = 'acknowledge_candidate')
+        OR (f.state = 'needs_evidence'
+           AND NEW.action = 'request_evidence')
+        OR (f.state = 'conflicting_identifiers'
+           AND NEW.action = 'escalate_conflict')
+        OR (f.state = 'not_matched_to_this_notice'
+           AND NEW.action = 'record_nonmatch_for_this_notice')
+        )
+        )
+        BEGIN
+        SELECT RAISE(
+        ABORT,
+           'invalid or stale simulated review decision'
+        );
+        END;
+
+
         CREATE TABLE IF NOT EXISTS approvals (
             approval_id INTEGER PRIMARY KEY,
             case_id TEXT NOT NULL,

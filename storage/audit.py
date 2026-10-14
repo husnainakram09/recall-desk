@@ -7,6 +7,7 @@ AUDIT_TABLES = (
     "case_versions",
     "findings",
     "approvals",
+    "review_decisions",
 )
 
 
