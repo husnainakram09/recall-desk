@@ -14,12 +14,64 @@ from storage.repository import (
     get_revision,
     list_cases,
     load_findings,
+    rereview_case,
     store_findings,
 )
 
 DB_PATH = Path(".recalldesk_demo.db")
 ACTIVE_KEY = "dev2_active_case_id"
 SOURCE_SNAPSHOT_KEY = "dev2_notice_source_snapshot"
+
+
+def _render_rereview_controls(conn, snapshot):
+    """Collect new attestations bound to the displayed saved revision."""
+    if snapshot.source_verified and snapshot.scope_reviewed:
+        return snapshot
+
+    st.warning(
+        "Source or scope review remains incomplete. Review the recorded "
+        "notice URL and this saved evidence before recording new "
+        "self-attestations. These checks do not verify the source "
+        "independently or authorize medicine handling."
+    )
+    key = f"dev2_rereview_{snapshot.case_id}_{snapshot.revision}"
+    with st.form(key):
+        source_checked = st.checkbox(
+            "I rechecked the recorded notice source for this saved "
+            "revision (simulation).",
+            key=f"{key}_source",
+        )
+        scope_checked = st.checkbox(
+            "I rechecked the affected product and lot scope for this "
+            "saved revision (simulation).",
+            key=f"{key}_scope",
+        )
+        submitted = st.form_submit_button(
+            "Record source and scope review for saved revision"
+        )
+
+    if not submitted:
+        return snapshot
+
+    if not (source_checked and scope_checked):
+        st.warning("Confirm both new checks before recording review.")
+        return snapshot
+
+    try:
+        revision = rereview_case(
+            conn,
+            snapshot.case_id,
+            expected_revision=snapshot.revision,
+        )
+    except (ValueError, KeyError, sqlite3.Error) as exc:
+        st.error(f"Source and scope review was not recorded: {exc}")
+        return snapshot
+
+    st.success(
+        f"Self-attestations saved as revision {revision}. Findings "
+        "were recalculated; previous decisions remain historical."
+    )
+    return get_revision(conn, snapshot.case_id, revision)
 
 
 def render_case_controls():
@@ -79,6 +131,7 @@ def render_case_controls():
                         st.session_state[SOURCE_SNAPSHOT_KEY] = (
                             case_id,
                             st.session_state.get(session.NOTICE_TEXT),
+                            1,
                         )
                         st.success(f"Saved case {case_id}")
 
@@ -106,20 +159,16 @@ def render_case_controls():
 
             if active_id:
                 snapshot = get_revision(conn, active_id)
-                findings = load_findings(conn, active_id)
+                st.caption(f"Recorded notice URL: {snapshot.source_url}")
+                snapshot = _render_rereview_controls(conn, snapshot)
+                findings = load_findings(
+                    conn, active_id, snapshot.revision
+                )
 
                 st.info(
                     f"Reviewing {snapshot.case_id}, "
                     f"revision {snapshot.revision}"
                 )
-                st.caption(f"Recorded notice URL: {snapshot.source_url}")
-
-                if not (snapshot.source_verified and snapshot.scope_reviewed):
-                    st.warning(
-                        "Source or scope review remains incomplete. "
-                        "Stored findings are not cleared for review."
-                    )
-
                 return snapshot, findings
 
         finally:

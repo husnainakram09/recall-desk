@@ -615,3 +615,41 @@ def correct_stock_lot(
         )
 
     return revision
+
+
+def rereview_case(
+    conn: sqlite3.Connection,
+    case_id: str,
+    *,
+    expected_revision: int,
+) -> int:
+    """Record fresh simulated source/scope review for saved evidence.
+
+    The caller must collect both explicit self-attestations. This does
+    not authenticate a reviewer or independently verify the source.
+    """
+    with conn:
+        snapshot = get_revision(conn, case_id)
+
+        if snapshot.revision != expected_revision:
+            raise ValueError("Stale revision: reopen the case before review.")
+
+        if snapshot.source_verified and snapshot.scope_reviewed:
+            raise ValueError("Source and scope are already reviewed.")
+
+        revision = append_revision(
+            conn,
+            case_id,
+            expected_revision=expected_revision,
+            source_verified=True,
+            scope_reviewed=True,
+            _manage_transaction=False,
+        )
+        store_findings(
+            conn,
+            case_id,
+            revision,
+            _manage_transaction=False,
+        )
+
+    return revision

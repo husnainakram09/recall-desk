@@ -16,6 +16,7 @@ from storage.repository import (
     load_findings,
     load_review_decisions,
     record_review_decision,
+    rereview_case,
     store_findings,
 )
 from storage.review_policy import ReviewAction
@@ -263,3 +264,131 @@ def test_stock_correction_rolls_back_if_findings_fail(
     history = load_review_decisions(conn, "DEMO-REVIEW")
     assert len(history) == 1
     assert history[0].is_current
+
+
+def test_rereview_restores_findings_without_changing_evidence(ready_case):
+    conn, path = ready_case
+    _record(conn)
+    correct_stock_lot(
+        conn,
+        "DEMO-REVIEW",
+        expected_revision=1,
+        row_id="A",
+        lot_raw="ZZ9TEST",
+    )
+    before = get_revision(conn, "DEMO-REVIEW")
+
+    revision = rereview_case(
+        conn, "DEMO-REVIEW", expected_revision=2
+    )
+
+    reopened = connect(path)
+    try:
+        reviewed = get_revision(reopened, "DEMO-REVIEW")
+        assert revision == reviewed.revision == 3
+        assert reviewed.source_verified and reviewed.scope_reviewed
+        assert reviewed.notice_items == before.notice_items
+        assert reviewed.stock_rows == before.stock_rows
+        assert reviewed.notice_version == before.notice_version
+        assert reviewed.stock_version == before.stock_version
+        assert load_findings(reopened, "DEMO-REVIEW")[0].finding.state is (
+            MatchState.NOT_MATCHED
+        )
+        assert load_findings(reopened, "DEMO-REVIEW", 2)[0].finding.state is (
+            MatchState.CHECK_INCOMPLETE
+        )
+        history = load_review_decisions(reopened, "DEMO-REVIEW")
+        assert len(history) == 1
+        assert history[0].revision == 1
+        assert not history[0].is_current
+        assert _record(
+            reopened, revision=3, action=ReviewAction.RECORD_NONMATCH
+        ).is_current
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize(
+    ("source_verified", "scope_reviewed"),
+    [(False, False), (True, False), (False, True)],
+)
+def test_rereview_renews_both_flags(
+    ready_case, source_verified, scope_reviewed
+):
+    conn, _ = ready_case
+    append_revision(
+        conn,
+        "DEMO-REVIEW",
+        source_verified=source_verified,
+        scope_reviewed=scope_reviewed,
+    )
+    store_findings(conn, "DEMO-REVIEW")
+
+    rereview_case(conn, "DEMO-REVIEW", expected_revision=2)
+
+    reviewed = get_revision(conn, "DEMO-REVIEW")
+    assert reviewed.source_verified and reviewed.scope_reviewed
+    assert load_findings(conn, "DEMO-REVIEW")[0].finding.state is (
+        MatchState.EXACT_CANDIDATE
+    )
+
+
+def test_rereview_rejects_complete_revision_without_writes(ready_case):
+    conn, _ = ready_case
+    before = conn.total_changes
+
+    with pytest.raises(ValueError, match="already reviewed"):
+        rereview_case(conn, "DEMO-REVIEW", expected_revision=1)
+
+    assert conn.total_changes == before
+    assert get_revision(conn, "DEMO-REVIEW").revision == 1
+
+
+def test_rereview_rejects_concurrently_changed_revision(ready_case):
+    conn, path = ready_case
+    second = connect(path)
+    try:
+        correct_stock_lot(
+            second,
+            "DEMO-REVIEW",
+            expected_revision=1,
+            row_id="A",
+            lot_raw="ZZ9TEST",
+        )
+    finally:
+        second.close()
+
+    with pytest.raises(ValueError, match="Stale"):
+        rereview_case(conn, "DEMO-REVIEW", expected_revision=1)
+
+    assert get_revision(conn, "DEMO-REVIEW").revision == 2
+    assert not get_revision(conn, "DEMO-REVIEW").source_verified
+
+
+def test_rereview_rolls_back_if_findings_fail(ready_case, monkeypatch):
+    conn, _ = ready_case
+    _record(conn)
+    correct_stock_lot(
+        conn,
+        "DEMO-REVIEW",
+        expected_revision=1,
+        row_id="A",
+        lot_raw="ZZ9TEST",
+    )
+    before = get_revision(conn, "DEMO-REVIEW")
+
+    def fail_to_store(*args, **kwargs):
+        raise RuntimeError("Simulated finding-storage failure")
+
+    monkeypatch.setattr("storage.repository.store_findings", fail_to_store)
+    with pytest.raises(RuntimeError, match="finding-storage failure"):
+        rereview_case(conn, "DEMO-REVIEW", expected_revision=2)
+
+    assert get_revision(conn, "DEMO-REVIEW") == before
+    assert len(load_findings(conn, "DEMO-REVIEW")) == 1
+    assert load_findings(conn, "DEMO-REVIEW")[0].finding.state is (
+        MatchState.CHECK_INCOMPLETE
+    )
+    history = load_review_decisions(conn, "DEMO-REVIEW")
+    assert len(history) == 1
+    assert history[0].revision == 1

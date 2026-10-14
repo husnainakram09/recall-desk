@@ -142,7 +142,12 @@ def render() -> None:
             source_snapshot = st.session_state.get(SOURCE_SNAPSHOT_KEY)
             notice = (
             source_snapshot[1]
-        if source_snapshot and source_snapshot[0] == saved_case.case_id
+        if (
+            source_snapshot
+            and len(source_snapshot) == 3
+            and source_snapshot[0] == saved_case.case_id
+            and source_snapshot[2] == saved_case.notice_version
+        )
         else None
         )
 
