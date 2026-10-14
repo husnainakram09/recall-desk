@@ -16,6 +16,7 @@ from contracts import (
     Strength,
 )
 from matching.engine import classify
+from storage.review_policy import ReviewAction, validate_review_action
 
 
 @dataclass(frozen=True)
@@ -369,3 +370,139 @@ def load_findings(
         )
 
     return tuple(results)
+
+
+@dataclass(frozen=True)
+class StoredReviewDecision:
+    """One immutable simulated review event."""
+
+    decision_id: int
+    case_id: str
+    revision: int
+    row_id: str
+    item_index: int
+    action: ReviewAction
+    finding_state: MatchState
+    reviewer_label: str
+    reviewer_role: str
+    note: str
+    decided_at_utc: str
+    is_current: bool
+
+
+def record_review_decision(
+    conn: sqlite3.Connection,
+    case_id: str,
+    revision: int,
+    row_id: str,
+    item_index: int,
+    action: ReviewAction,
+    reviewer_label: str,
+    role: str,
+    *,
+    note: str = "",
+) -> StoredReviewDecision:
+    """Record a simulated decision for current reviewed evidence."""
+    label = reviewer_label.strip()
+
+    if not label:
+        raise ValueError("A demonstration reviewer label is required.")
+
+    snapshot = get_revision(conn, case_id)
+
+    if revision != snapshot.revision:
+        raise ValueError("Stale revision: fresh review is required.")
+
+    if not (snapshot.source_verified and snapshot.scope_reviewed):
+        raise ValueError("Source and scope review are incomplete.")
+
+    record = conn.execute(
+        """
+        SELECT state FROM findings
+        WHERE case_id = ? AND revision = ?
+          AND row_id = ? AND item_index = ?
+        """,
+        (case_id, revision, row_id, item_index),
+    ).fetchone()
+
+    if record is None:
+        raise KeyError("No stored finding exists for this revision.")
+
+    validate_review_action(
+        MatchState(record["state"]),
+        action,
+        role,
+    )
+
+    # The SQLite trigger rechecks revision and action validity
+    # when the INSERT executes.
+    with conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO review_decisions (
+                case_id, revision, row_id, item_index,
+                action, reviewer_label, reviewer_role,
+                note, decided_at_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                case_id,
+                revision,
+                row_id,
+                item_index,
+                action.value,
+                label,
+                role,
+                note,
+                _timestamp(),
+            ),
+        )
+
+    return next(
+        decision
+        for decision in load_review_decisions(conn, case_id)
+        if decision.decision_id == cursor.lastrowid
+    )
+
+
+def load_review_decisions(
+    conn: sqlite3.Connection,
+    case_id: str,
+) -> tuple[StoredReviewDecision, ...]:
+    """Return audit history with current/stale status."""
+    current_revision = get_revision(conn, case_id).revision
+
+    records = conn.execute(
+        """
+        SELECT d.*, f.state AS finding_state
+        FROM review_decisions AS d
+        JOIN findings AS f
+          ON f.case_id = d.case_id
+         AND f.revision = d.revision
+         AND f.row_id = d.row_id
+         AND f.item_index = d.item_index
+        WHERE d.case_id = ?
+        ORDER BY d.decision_id
+        """,
+        (case_id,),
+    ).fetchall()
+
+    return tuple(
+        StoredReviewDecision(
+            decision_id=record["decision_id"],
+            case_id=record["case_id"],
+            revision=record["revision"],
+            row_id=record["row_id"],
+            item_index=record["item_index"],
+            action=ReviewAction(record["action"]),
+            finding_state=MatchState(record["finding_state"]),
+            reviewer_label=record["reviewer_label"],
+            reviewer_role=record["reviewer_role"],
+            note=record["note"],
+            decided_at_utc=record["decided_at_utc"],
+            is_current=(
+                record["revision"] == current_revision
+            ),
+        )
+        for record in records
+    )
