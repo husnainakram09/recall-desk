@@ -13,6 +13,7 @@ from app.pages.review_cases import (
     SOURCE_SNAPSHOT_KEY,
     render_case_controls,
 )
+from app.pages.review_decisions import render_review_decisions
 from matching.engine import classify
 
 
@@ -182,6 +183,13 @@ def render() -> None:
     with c3:
         st.write("**Conflicting**")
         st.write(", ".join(finding.conflicting_fields) or "None")
+
+        render_review_decisions(
+        saved_case,
+        row.row_id,
+        item_index,
+        finding,
+    )
 
     st.divider()
     st.subheader("Preview a batch correction")
