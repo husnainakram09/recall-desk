@@ -64,6 +64,30 @@ def test_reviewed_case_finding_survives_reopen(tmp_path):
     reopened.close()
 
 
+def test_descriptive_differences_survive_reopen(tmp_path):
+    conn = connect(tmp_path / "case.db")
+    init_db(conn)
+    create_case(
+        conn,
+        "CASE-001",
+        "https://example.org/synthetic-notice",
+        [NOTICE],
+        [replace(STOCK, product_raw="Synth Test Med")],
+        source_verified=True,
+        scope_reviewed=True,
+    )
+    stored = store_findings(conn, "CASE-001")
+    conn.close()
+
+    reopened = connect(tmp_path / "case.db")
+    loaded = load_findings(reopened, "CASE-001")
+    reopened.close()
+
+    assert loaded[0].finding.state is MatchState.EXACT_CANDIDATE
+    assert loaded[0].finding.descriptive_differences == ("product",)
+    assert loaded == stored
+
+
 def test_new_revision_preserves_old_findings(tmp_path):
     conn = _case(tmp_path, reviewed=True)
     store_findings(conn, "CASE-001")

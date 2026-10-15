@@ -370,6 +370,7 @@ def load_findings(
             conflicting_fields=tuple(data["conflicting_fields"]),
             next_evidence=data["next_evidence"],
             evidence_span_ids=tuple(data["evidence_span_ids"]),
+            descriptive_differences=tuple(data.get("descriptive_differences", ())),
         )
 
         results.append(

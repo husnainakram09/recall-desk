@@ -73,3 +73,7 @@ class Finding:
     conflicting_fields: tuple[str, ...]
     next_evidence: Optional[str]
     evidence_span_ids: tuple[str, ...]
+    # Informational only: notice-stated name, form or holder that the stock
+    # row does not match (different or not recorded). Never affects state.
+    # Defaults to () so findings stored before this field still load.
+    descriptive_differences: tuple[str, ...] = ()
