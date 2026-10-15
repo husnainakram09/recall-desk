@@ -1,0 +1,20 @@
+diff --git a/app/main.py b/app/main.py
+--- a/app/main.py
++++ b/app/main.py
+@@ -8,4 +8,4 @@
+ from app import session, theme
+-from app.pages import import_stock, notice
++from app.pages import export, import_stock, notice, review
+-
++
+ PAGES = ("Import Stock", "Notice", "Review", "Export")
+@@ -25,5 +25,6 @@
+ elif page == "Notice":
+     notice.render()
+-else:
+-    st.header(page)
+-    st.caption(f"Placeholder, owned by Dev 2. Viewing as {role}.")
++elif page == "Review":
++    review.render()
++elif page == "Export":
++    export.render()
