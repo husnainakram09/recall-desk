@@ -46,6 +46,10 @@ including PLGB and PLNI), GTINs (system "GTIN", also shown as EAN or barcode \
 number) and batch numbers. Keep leading zeros, spaces, slashes, hyphens and \
 letter case. Never change O to 0, 0 to O, I to 1 or 1 to I. Never normalise, \
 reformat, complete or correct an identifier, even if it looks like a typo.
+Return the identifier itself without its field label: for "PL: 12345/0001" \
+return "12345/0001", for "GTIN: 05012345678906" return "05012345678906", for \
+"Batch No. AB12C3" return "AB12C3". A PLGB or PLNI prefix is part of the \
+licence number, so keep it.
 4. Every value carries the id of the span it was copied from, and that span \
 must contain the value itself.
 5. Attach each batch number only to the product it is listed for. Never merge \

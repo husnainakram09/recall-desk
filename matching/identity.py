@@ -21,16 +21,20 @@ def _label(value: str) -> str:
     return " ".join(value.casefold().split())
 
 
+# An optional leading "PL" label followed by any spaces, colons or full stops:
+# "PL: 04595/0011", "PL 04595/0011", "PL.04595/0011", "PL04595/0011".
+_PL_LABEL = re.compile(r"^PL[\s:.]*")
+
+
 def _code_key(system: str, value: str) -> str:
     """Comparison key only. Code.value keeps the raw text for display.
 
     A PL number is compared without surrounding whitespace or a leading
-    "PL " prefix. Every other code is compared exactly as written.
+    "PL" label. Digits, leading zeros and the slash are compared exactly.
+    Every other code is compared exactly as written.
     """
     if system == "UK_PL":
-        value = value.strip()
-        if value.startswith("PL "):
-            value = value[3:].strip()
+        value = _PL_LABEL.sub("", value.strip()).strip()
     return value
 
 

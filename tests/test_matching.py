@@ -20,15 +20,15 @@ from matching.engine import classify
 
 DESCRIPTIVE = {"product", "form", "holder"}
 
-# Historical recall scenario, worded as the regulator writes it.
+# MHRA EL(25)A/17, worded as printed on the notice (fixtures/notice_el25a17.txt).
+# The notice has no separate form field; "Tablets" comes from its title.
 NOTICE = NoticeItem(
-    name="Lercanidipine Hydrochloride 20 mg Film-coated Tablets",
+    name="Lercanidipine HCl 20mg Tablets",
     strength=Strength(value=20.0, unit="mg"),
-    form="film-coated tablet",
-    # Placeholder: use the holder named on the MHRA notice once verified.
-    holder="Example Pharma Ltd",
+    form="Tablets",
+    holder="Recordati Industria Chimica e Farmaceutica S.p.A.",
     codes=(
-        Code(system="UK_PL", value="PL 04595/0011"),
+        Code(system="UK_PL", value="PL: 04595/0011"),
         Code(system="GTIN", value="8057742821983"),
     ),
     lot_scope=LotScope.EXPLICIT_LIST,
@@ -236,7 +236,8 @@ def test_mislabelled_carton_with_other_strength_codes_is_conflict():
 
 
 @pytest.mark.parametrize(
-    "name", ["Amlodipine 5mg tabs", "HCl lercanidipine", "", "Different Demo Medicine"]
+    "name",
+    ["Amlodipine 5mg tabs", "Nifedipine lercanidipine", "", "Different Demo Medicine"],
 )
 def test_tiebreak_needs_the_leading_ingredient_to_agree(name):
     row = replace(SAME_DESCRIPTION, product_raw=name)
@@ -335,26 +336,49 @@ def test_matching_descriptive_wording_is_not_a_difference():
     assert DESCRIPTIVE <= set(finding.matched_fields)
 
 
-@pytest.mark.parametrize(
-    "stock_pl",
-    ["04595/0011", "PL 04595/0011", "  04595/0011 ", " PL  04595/0011"],
-)
-def test_pl_prefix_and_whitespace_are_ignored_when_comparing(stock_pl):
-    row = replace(
-        STOCK_A,
-        codes=(Code("UK_PL", stock_pl), STOCK_A.codes[1]),
-    )
+PL_LABEL_FORMS = [
+    "04595/0011",
+    "PL: 04595/0011",
+    "PL 04595/0011",
+    "PL.04595/0011",
+    "PL04595/0011",
+    "PL : 04595/0011",
+    "PL. 04595/0011",
+    "  PL:  04595/0011 ",
+]
 
-    finding = classify(row, NOTICE)
+
+@pytest.mark.parametrize("notice_pl", PL_LABEL_FORMS)
+@pytest.mark.parametrize("stock_pl", PL_LABEL_FORMS)
+def test_pl_label_forms_compare_equal_on_both_sides(notice_pl, stock_pl):
+    item = replace(NOTICE, codes=(Code("UK_PL", notice_pl), NOTICE.codes[1]))
+    row = replace(STOCK_A, codes=(Code("UK_PL", stock_pl), STOCK_A.codes[1]))
+
+    finding = classify(row, item)
 
     assert finding.state is MatchState.EXACT_CANDIDATE
     assert "UK_PL" in finding.matched_fields
-    assert row.codes[0].value == stock_pl  # raw value kept for display
+    assert row.codes[0].value == stock_pl  # raw values kept for display
+    assert item.codes[0].value == notice_pl
+
+
+@pytest.mark.parametrize("notice_pl", ["PL: 04595/0011", "PL.04595/0011"])
+@pytest.mark.parametrize(("row", "expected"), FIVE_CASES[:3])
+def test_rows_a_to_c_unaffected_by_labelled_notice_pl(notice_pl, row, expected):
+    item = replace(NOTICE, codes=(Code("UK_PL", notice_pl), NOTICE.codes[1]))
+
+    assert classify(row, item).state is expected
 
 
 @pytest.mark.parametrize(
     "stock_pl",
-    ["4595/0011", "PL 04595/0012", "PL04595/0011", "pl 04595/0011"],
+    [
+        "4595/0011",
+        "PL: 4595/0011",
+        "PL 04595/0012",
+        "pl 04595/0011",
+        "PLGB 04595/0011",
+    ],
 )
 def test_pl_digits_and_other_spellings_still_compared_exactly(stock_pl):
     row = replace(
