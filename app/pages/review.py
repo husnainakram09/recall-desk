@@ -16,6 +16,7 @@ from app.pages.review_cases import (
     render_case_controls,
 )
 from app.pages.review_decisions import render_review_decisions
+from app.provenance import current_provenance, render_provenance
 from matching.engine import classify
 from storage.db import connect
 from storage.repository import correct_stock_lot
@@ -32,6 +33,11 @@ def render() -> None:
     )
 
     saved_case, saved_findings = render_case_controls()
+
+    if saved_case is None:
+        render_provenance(current_provenance(), saved=False)
+    else:
+        render_provenance(saved_case.extraction_provenance, saved=True)
 
     if saved_case is None:
         rows = st.session_state.get(session.INVENTORY) or []

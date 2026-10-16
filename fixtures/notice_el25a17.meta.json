@@ -1,0 +1,24 @@
+{
+  "notice_id": "EL(25)A/17",
+  "title": "Class 2 Medicines Recall: Lercanidipine HCl 20mg Tablets, Recordati Industria, EL(25)A/17",
+  "authority": "Medicines and Healthcare products Regulatory Agency (MHRA), Defective Medicines Report Centre",
+  "source_url": "https://www.gov.uk/drug-device-alerts/class-2-medicines-recall-lercanidipine-hcl-20mg-tablets-recordati-industria-el-25-a-slash-17",
+  "pdf_url": "https://assets.publishing.service.gov.uk/media/6800f61090d0846c19e287f2/Class_2_Recall_-_Lercanidipine_HCl_20mg_Tablets_FINAL_1_.pdf",
+  "pdf_sha256": "84a7af0bc3b66e2a29e91998bdc432f009efb22092c7d1b88e5ab40564bb420b",
+  "date_published": "2025-04-17",
+  "fetched_utc": "2026-10-16T10:42:55Z",
+  "text_extraction": "pypdf text layer of the PDF above, page order kept, trailing whitespace removed per line. No other changes.",
+  "verified_identifiers": {
+    "product": "Lercanidipine HCl 20mg Tablets",
+    "marketing_authorisation_holder": "Recordati Industria Chimica e Farmaceutica S.p.A.",
+    "pl_as_printed": "PL: 04595/0011",
+    "gtin": "8057742821983",
+    "batch": "MD4L07",
+    "expiry_as_printed": "01/2028",
+    "pack_size": 28,
+    "first_distributed": "10/04/2025"
+  },
+  "licence": "Open Government Licence v3.0",
+  "licence_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+  "attribution": "Contains public sector information licensed under the Open Government Licence v3.0. Source: MHRA, EL(25)A/17, published 17 April 2025."
+}

@@ -77,12 +77,26 @@ _CSS = """
   padding-top: .1rem; }
 .rd-span-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .rd-span.rd-cited { background: #E7F0F4; }
+.rd-synthetic {
+  border: 2px dashed #7A5B00; background: #FBF5DE; color: #4A3700;
+  border-radius: 6px; padding: .45rem .8rem; margin-bottom: .8rem;
+  font-weight: 600; letter-spacing: .02em;
+}
 </style>
 """
 
 
 def inject_css() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
+
+
+def synthetic_banner(source: str) -> None:
+    """Shown on every page while demo fixture stock is loaded."""
+    st.markdown(
+        f'<div class="rd-synthetic">SYNTHETIC STOCK DATA · loaded from '
+        f"{escape(source)} · not real pharmacy stock</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def badge_html(state: MatchState) -> str:

@@ -11,7 +11,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from app import session, theme
+from app import demo_fixtures, session, theme
 from config import ConfigError
 from contracts import Code, LotScope, NoticeItem, Strength
 from extraction.token_factory import CallMeta, ExtractionError, TokenFactoryAdapter
@@ -69,10 +69,14 @@ def _load_notice() -> NoticeText | None:
         upload = st.file_uploader("Notice PDF", type="pdf")
     with tab_paste:
         pasted = st.text_area("Notice text", height=180)
+    load_fixture = st.button("Load MHRA notice EL(25)A/17 (fixture)")
 
     previous: NoticeText | None = st.session_state.get(session.NOTICE_TEXT)
+    source_meta = None
     try:
-        if upload is not None:
+        if load_fixture:
+            notice, source_meta = demo_fixtures.notice()
+        elif upload is not None:
             notice = read_pdf(upload.getvalue())
         elif pasted.strip():
             notice = read_pasted(pasted)
@@ -80,17 +84,30 @@ def _load_notice() -> NoticeText | None:
             # Widgets reset when the user visits another page; keep the notice.
             if previous is not None:
                 st.caption("Showing the notice loaded earlier.")
+                _attribution()
             return previous
     except NoticeReadError as exc:
         st.error(str(exc))
         return None
 
     if previous is None or previous.text != notice.text:
+        st.session_state[session.NOTICE_SOURCE] = source_meta
         st.session_state[session.NOTICE_TEXT] = notice
         for key in (session.EXTRACTION, session.CALL_META, session.VALIDATION_ERRORS):
             st.session_state[key] = None
         _set_draft([], None)
+    _attribution()
     return notice
+
+
+def _attribution() -> None:
+    meta = st.session_state.get(session.NOTICE_SOURCE)
+    if meta:
+        st.caption(
+            f"Real public notice {meta['notice_id']}, {meta['authority']}, "
+            f"published {meta['date_published']}. {meta['attribution']} "
+            f"Source: {meta['source_url']}"
+        )
 
 
 # -- extraction --------------------------------------------------------------
@@ -136,6 +153,9 @@ def _run_extraction(notice: NoticeText) -> None:
 
 def _call_meta(meta: CallMeta, extraction: ExtractedNotice | None) -> None:
     parts = [
+        f"Endpoint {theme.identifier_html(meta.endpoint)}",
+        f"Called {escape(meta.called_at_utc)}",
+        f"HTTP {meta.status_code}",
         f"Request ID {theme.identifier_html(meta.request_id)}",
         f"Latency <b>{meta.latency_ms:,.0f} ms</b>",
         f"Model {theme.identifier_html(meta.model)}",

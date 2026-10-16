@@ -21,6 +21,23 @@ from storage.review_policy import ReviewAction, validate_review_action
 
 
 @dataclass(frozen=True)
+class ExtractionProvenance:
+    """The model call that produced the notice draft saved with a case.
+
+    Recorded once when the case is created and never updated. A case whose
+    notice was drafted by hand has no provenance.
+    """
+
+    endpoint: str
+    model: str | None
+    request_id: str | None
+    latency_ms: float
+    called_at_utc: str
+    # The reviewer changed the model's draft before saving the case.
+    edited_before_save: bool
+
+
+@dataclass(frozen=True)
 class CaseRevision:
     case_id: str
     source_url: str
@@ -32,6 +49,7 @@ class CaseRevision:
     source_verified: bool
     scope_reviewed: bool
     created_at_utc: str
+    extraction_provenance: ExtractionProvenance | None = None
 
 
 def _timestamp() -> str:
@@ -109,6 +127,7 @@ def create_case(
     *,
     source_verified: bool = False,
     scope_reviewed: bool = False,
+    extraction_provenance: ExtractionProvenance | None = None,
 ) -> int:
     """Atomically create a case and its first evidence snapshot."""
     notice_items = tuple(notice_items)
@@ -119,11 +138,20 @@ def create_case(
         raise ValueError("Case ID and source URL are required.")
 
     timestamp = _timestamp()
+    provenance_json = (
+        json.dumps(asdict(extraction_provenance), sort_keys=True)
+        if extraction_provenance is not None
+        else None
+    )
 
     with conn:
         conn.execute(
-            "INSERT INTO cases VALUES (?, ?, ?)",
-            (case_id, source_url, timestamp),
+            """
+            INSERT INTO cases (
+                case_id, source_url, created_at_utc, extraction_provenance_json
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (case_id, source_url, timestamp, provenance_json),
         )
         conn.execute(
             """
@@ -150,7 +178,7 @@ def get_revision(
 ) -> CaseRevision:
     """Read an existing revision without modifying it."""
     sql = """
-        SELECT v.*, c.source_url
+        SELECT v.*, c.source_url, c.extraction_provenance_json
         FROM case_versions AS v
         JOIN cases AS c ON c.case_id = v.case_id
         WHERE v.case_id = ?
@@ -184,6 +212,11 @@ def get_revision(
         source_verified=bool(record["source_verified"]),
         scope_reviewed=bool(record["scope_reviewed"]),
         created_at_utc=record["created_at_utc"],
+        extraction_provenance=(
+            ExtractionProvenance(**json.loads(record["extraction_provenance_json"]))
+            if record["extraction_provenance_json"]
+            else None
+        ),
     )
 
 

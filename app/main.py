@@ -20,6 +20,9 @@ with st.sidebar:
     role = st.selectbox("Role", ROLES, key=session.ROLE)
     st.caption("All stock data is synthetic.")
 
+if st.session_state.get(session.STOCK_SOURCE):
+    theme.synthetic_banner(st.session_state[session.STOCK_SOURCE])
+
 if page == "Import Stock":
     import_stock.render()
 elif page == "Notice":

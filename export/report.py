@@ -57,6 +57,39 @@ def _field(story, styles, label, value):
     )
 
 
+def _provenance(story, styles, snapshot):
+    story.append(Spacer(1, 3 * mm))
+    story.append(Paragraph("Extraction provenance", styles["Heading3"]))
+    p = snapshot.extraction_provenance
+    if p is None:
+        story.append(
+            Paragraph(
+                "No model call recorded: the notice was drafted manually, or the "
+                "case was saved before provenance was recorded.",
+                styles["BodyText"],
+            )
+        )
+        return
+    _field(story, styles, "Endpoint", p.endpoint)
+    _field(story, styles, "Model", p.model or "Not reported")
+    _field(story, styles, "Request ID", p.request_id or "Not reported")
+    _field(story, styles, "Latency", f"{p.latency_ms:,.0f} ms")
+    _field(story, styles, "Called at (UTC)", p.called_at_utc)
+    _field(
+        story,
+        styles,
+        "Draft edited by reviewer before saving",
+        "Yes" if p.edited_before_save else "No",
+    )
+    if snapshot.notice_version > 1:
+        _field(
+            story,
+            styles,
+            "Notice evidence since extraction",
+            f"Revised (notice version {snapshot.notice_version})",
+        )
+
+
 def _footer(canvas, document):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
@@ -190,6 +223,8 @@ def build_case_report(
         "Recorded" if snapshot.scope_reviewed else "Not recorded",
     )
 
+    _provenance(story, styles, snapshot)
+
     story.append(Spacer(1, 4 * mm))
     story.append(Paragraph("Important limitations", styles["Heading2"]))
     story.append(Paragraph(SAFETY_STATEMENT, styles["BodyText"]))
@@ -198,9 +233,10 @@ def build_case_report(
             "All stock is synthetic. Reviewer roles and decisions "
             "are simulated, not authenticated professional approval. "
             "This report may include unreviewed or incomplete findings; "
-            "export is not approval. The original notice excerpts, source "
-            "document hashes and extraction provenance are not stored in "
-            "SQLite; span IDs alone do not reproduce the source. Consult "
+            "export is not approval. The original notice excerpts and source "
+            "document hashes are not stored in SQLite; span IDs alone do not "
+            "reproduce the source. Extraction provenance identifies the model "
+            "call that drafted the notice, not that its output was correct. Consult "
             "the original source before relying on any finding. Local "
             "append-only database guards are not tamper-proof evidence.",
             styles["BodyText"],

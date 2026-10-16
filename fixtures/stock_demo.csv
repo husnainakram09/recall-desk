@@ -1,0 +1,13 @@
+row_id,site,location,product,strength_mg,dosage_form,manufacturer,holder,lot,expiry,pack_size,quantity,unit,pl,gtin
+A,SYNTHETIC Demo Pharmacy,Dispensary shelf 3B,Lercanidipine 20mg tabs,20,tablet,,,MD4L07,2028-01,28,6,pack,04595/0011,8057742821983
+B,SYNTHETIC Demo Pharmacy,Dispensary shelf 3B,Lercanidipine 20mg tabs,20,tablet,,,ZZ9TEST,2027-09,28,3,pack,04595/0011,8057742821983
+C,SYNTHETIC Demo Pharmacy,Dispensary shelf 3B,Lercanidipine 20mg tabs,20,tablet,,,,2028-01,28,4,pack,04595/0011,8057742821983
+D,SYNTHETIC Demo Pharmacy,Returns tote,Lercanidipine 10mg tabs,10,tablet,,,MD4L07,2028-01,28,2,pack,04595/0011,8057742821983
+E,SYNTHETIC Demo Pharmacy,Dispensary shelf 1A,Amlodipine 5mg tabs,5,tablet,,,MD4L07,2027-11,28,5,pack,99999/0001,0200000000011
+F,SYNTHETIC Demo Pharmacy,Dispensary shelf 1A,Amlodipine 10mg tabs,10,tablet,,,AM10K22,2027-06,28,8,pack,99999/0002,0200000000028
+G,SYNTHETIC Demo Pharmacy,Dispensary shelf 1C,Atorvastatin 20mg tabs,20,tablet,,,AT20J91,2027-03,28,12,pack,99999/0003,0200000000035
+H,SYNTHETIC Demo Pharmacy,Dispensary shelf 2B,Ramipril 5mg caps,5,capsule,,,RP5H03,2026-12,28,7,pack,99999/0004,0200000000042
+I,SYNTHETIC Demo Pharmacy,Dispensary shelf 2C,Metformin 500mg tabs,500,tablet,,,MF500L18,2027-08,56,9,pack,99999/0005,0200000000059
+J,SYNTHETIC Demo Pharmacy,Dispensary shelf 3A,Omeprazole 20mg gastro-resistant caps,20,capsule,,,OM20G77,2027-01,28,10,pack,99999/0006,0200000000066
+K,SYNTHETIC Demo Pharmacy,Dispensary shelf 4D,Sertraline 50mg tabs,50,tablet,,,SE50F40,2027-05,28,4,pack,99999/0007,0200000000073
+L,SYNTHETIC Demo Pharmacy,Fridge-adjacent shelf,Bisoprolol 2.5mg tabs,2.5,tablet,,,BS25D09,2027-10,28,6,pack,99999/0008,0200000000080

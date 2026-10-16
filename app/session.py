@@ -3,6 +3,12 @@
 ROLE = "role"  # "Technician" | "Pharmacist", sidebar dropdown
 INVENTORY = "inventory"  # list[InventoryRow], set by Import Stock
 NOTICE_ITEMS = "notice_items"  # list[NoticeItem], saved drafts with a name
+STOCK_SOURCE = "stock_source"  # fixture label when demo stock is loaded, else None
+NOTICE_SOURCE = "notice_source"  # fixture meta dict when the MHRA fixture is loaded
+
+# Internal to the Import Stock page.
+STOCK_CSV_TEXT = "stock_csv_text"  # last CSV text loaded, for the preview
+STOCK_UPLOAD_ID = "stock_upload_id"  # file_id of the last processed upload
 
 # Internal to the Notice page.
 NOTICE_TEXT = "notice_text"  # ingestion.notice_reader.NoticeText

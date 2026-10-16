@@ -24,7 +24,8 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS cases (
             case_id TEXT PRIMARY KEY,
             source_url TEXT NOT NULL,
-            created_at_utc TEXT NOT NULL
+            created_at_utc TEXT NOT NULL,
+            extraction_provenance_json TEXT
         );
 
         CREATE TABLE IF NOT EXISTS case_versions (
@@ -145,5 +146,11 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
         """
     )
+
+    # Databases created before extraction provenance existed get the
+    # column added; their earlier cases keep NULL (no recorded call).
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(cases)")}
+    if "extraction_provenance_json" not in columns:
+        conn.execute("ALTER TABLE cases ADD COLUMN extraction_provenance_json TEXT")
 
     install_append_only_guards(conn)

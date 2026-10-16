@@ -3,7 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-from app import session
+from app import demo_fixtures, session
 from ingestion.csv_loader import COLUMNS, parse_inventory_csv
 
 _ERROR_BG = "background-color: #FDECEC"
@@ -14,20 +14,33 @@ def render() -> None:
     st.caption("Synthetic stock data only. No real patient or pharmacy data.")
 
     upload = st.file_uploader("Stock CSV", type="csv")
-    if upload is None:
-        loaded = st.session_state.get(session.INVENTORY)
-        if loaded:
-            st.info(
-                f"{len(loaded)} stock rows loaded. Upload a new file to replace them."
+    load_demo = st.button("Load synthetic demo stock")
+
+    if load_demo:
+        st.session_state[session.STOCK_CSV_TEXT] = demo_fixtures.stock_csv_text()
+        st.session_state[session.STOCK_SOURCE] = demo_fixtures.STOCK_LABEL
+        st.rerun()  # so the page-level synthetic banner shows immediately
+    elif upload is not None and upload.file_id != st.session_state.get(
+        session.STOCK_UPLOAD_ID
+    ):
+        try:
+            text = upload.getvalue().decode("utf-8-sig")
+        except UnicodeDecodeError:
+            st.error(
+                "This file is not UTF-8 text. Re-save it as CSV UTF-8 and try again."
             )
+            return
+        st.session_state[session.STOCK_UPLOAD_ID] = upload.file_id
+        st.session_state[session.STOCK_CSV_TEXT] = text
+        st.session_state[session.STOCK_SOURCE] = None
+        st.rerun()
+
+    text = st.session_state.get(session.STOCK_CSV_TEXT)
+    if text is None:
         st.caption("Expected columns: " + ", ".join(COLUMNS))
         return
-
-    try:
-        text = upload.getvalue().decode("utf-8-sig")
-    except UnicodeDecodeError:
-        st.error("This file is not UTF-8 text. Re-save it as CSV UTF-8 and try again.")
-        return
+    source = st.session_state.get(session.STOCK_SOURCE)
+    st.caption(f"Showing {source or 'the uploaded CSV'}.")
 
     result = parse_inventory_csv(text)
     for err in (e for e in result.errors if e.line == 1):

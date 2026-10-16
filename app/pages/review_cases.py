@@ -8,6 +8,7 @@ from uuid import uuid4
 import streamlit as st
 
 from app import session
+from app.provenance import current_provenance
 from storage.db import connect, init_db
 from storage.repository import (
     create_case,
@@ -122,6 +123,7 @@ def render_case_controls():
                             rows,
                             source_verified=source_checked,
                             scope_reviewed=scope_checked,
+                            extraction_provenance=current_provenance(),
                         )
                         store_findings(conn, case_id)
                     except (ValueError, sqlite3.IntegrityError) as exc:

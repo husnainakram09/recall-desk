@@ -22,21 +22,35 @@ Affected batch: AB12C3.
 def main() -> int:
     try:
         adapter = TokenFactoryAdapter()
-        parsed = adapter.extract(build_user_message(split_spans(SAMPLE_TEXT)))
-    except (ConfigError, ExtractionError) as exc:
+    except ConfigError as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
 
-    meta = adapter.last_call_meta
+    try:
+        parsed = adapter.extract(build_user_message(split_spans(SAMPLE_TEXT)))
+    except ExtractionError as exc:
+        print(f"FAILED: {exc}", file=sys.stderr)
+        _print_meta(adapter)
+        return 1
+
     print("Raw response:")
     print(json.dumps(adapter.last_raw_response, indent=2))
     print("\nParsed:")
     print(json.dumps(parsed, indent=2))
-    print(f"\nRequest id: {meta.request_id}")
-    print(f"Model:      {meta.model}")
-    print(f"Latency:    {meta.latency_ms:.0f} ms ({meta.attempts} attempt(s))")
-    print(f"Usage:      {meta.usage}")
+    _print_meta(adapter)
     return 0
+
+
+def _print_meta(adapter: TokenFactoryAdapter) -> None:
+    meta = adapter.last_call_meta
+    if meta is None:
+        return
+    print(f"\nEndpoint:   {meta.endpoint}")
+    print(f"HTTP:       {meta.status_code} ({meta.attempts} attempt(s))")
+    print(f"Request id: {meta.request_id}")
+    print(f"Model:      {meta.model}")
+    print(f"Latency:    {meta.latency_ms:.0f} ms, called at {meta.called_at_utc}")
+    print(f"Usage:      {meta.usage}")
 
 
 if __name__ == "__main__":
