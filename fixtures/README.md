@@ -39,5 +39,9 @@ code `99999`, and GTINs in the GS1 `02` prefix range, which is reserved for
 restricted internal use and never assigned to trade items. Neither refers to
 any real product.
 
+`stock_edge_cases.csv` is also synthetic. It exercises PL label forms, a
+miskeyed GTIN, a mislabelled carton, lot spacing, case and O/0 typos, a lot
+range, missing evidence and four rows that must fail to parse (lines 14-17).
+
 "Not matched to this notice" only means the row did not match this notice. It
 does not establish that the stock is safe.

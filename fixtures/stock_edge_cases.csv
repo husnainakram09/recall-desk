@@ -1,0 +1,17 @@
+row_id,site,location,product,strength_mg,dosage_form,manufacturer,holder,lot,expiry,pack_size,quantity,unit,pl,gtin
+X01,SYNTHETIC Edge Pharmacy,Shelf 1,Lercanidipine 20mg tabs,20,tablet,,,MD4L07,2028-01,28,3,pack,PL 04595/0011,8057742821983
+X02,SYNTHETIC Edge Pharmacy,Shelf 1,Lercanidipine 20mg tabs,20,tablet,,,MD4L07,2028-01,28,3,pack,PL: 04595/0011,8057742821983
+X03,SYNTHETIC Edge Pharmacy,Shelf 1,Lercanidipine 20mg tabs,20,tablet,,,MD4L07,2028-01,28,2,pack,4595/0011,8057742821983
+X04,SYNTHETIC Edge Pharmacy,Shelf 2,Lercanidipine HCl,20,tablet,,,MD4L07,2028-01,28,1,pack,,8057742821984
+X05,SYNTHETIC Edge Pharmacy,Returns tote,Lercanidipine 10mg tabs,10,tablet,,,MD4L07,2028-01,28,2,pack,99999/0010,0200000000097
+X06,SYNTHETIC Edge Pharmacy,Shelf 2,Lercanidipine 20mg tabs,20,tablet,,,  MD4L07 ,2028-01,28,4,pack,04595/0011,8057742821983
+X07,SYNTHETIC Edge Pharmacy,Shelf 2,Lercanidipine 20mg tabs,20,tablet,,,md4l07,2028-01,28,4,pack,04595/0011,8057742821983
+X08,SYNTHETIC Edge Pharmacy,Shelf 2,Lercanidipine 20mg tabs,20,tablet,,,MD4LO7,2028-01,28,4,pack,04595/0011,8057742821983
+X09,SYNTHETIC Edge Pharmacy,Shelf 3,Lercanidipine 20mg tabs,20,tablet,,,MD4L05-MD4L09,2028-01,28,4,pack,04595/0011,8057742821983
+X10,SYNTHETIC Edge Pharmacy,Shelf 3,Lercanidipine 20mg tabs,20,tablet,,,MD4L07,2028-01,28,4,pack,,
+X11,SYNTHETIC Edge Pharmacy,Shelf 3,Lercanidipine tabs,,tablet,,,MD4L07,2028-01,28,4,pack,04595/0011,8057742821983
+X12,SYNTHETIC Edge Pharmacy,Shelf 3,Lercanidipine 20mg tabs,20,tablet,,,MD4L07,2028-01,,4,pack,04595/0011,8057742821983
+X13,SYNTHETIC Edge Pharmacy,Shelf 4,Lercanidipine 20mg tabs,20,tablet,,,MD4L07,01/2028,28,4,pack,04595/0011,8057742821983
+X14,SYNTHETIC Edge Pharmacy,Shelf 4,Lercanidipine 20mg tabs,20,tablet,,,MD4L07,2028-01,28,four,pack,04595/0011,8057742821983
+X01,SYNTHETIC Edge Pharmacy,Shelf 4,Lercanidipine 20mg tabs,20,tablet,,,MD4L07,2028-01,28,1,pack,04595/0011,8057742821983
+X16,SYNTHETIC Edge Pharmacy,Shelf 4,,20,tablet,,,MD4L07,2028-01,28,1,pack,04595/0011,8057742821983

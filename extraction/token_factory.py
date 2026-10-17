@@ -10,7 +10,7 @@ import requests
 from config import AMDSettings, load_amd_settings
 from extraction.prompts import SYSTEM_PROMPT
 
-TIMEOUT_S = 60
+TIMEOUT_S = 120  # shared endpoint: reasoning models measured at ~60 s
 MAX_ATTEMPTS = 2  # one retry, on 5xx only
 
 
