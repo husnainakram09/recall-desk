@@ -558,3 +558,34 @@ def test_mixed_exact_lot_and_unresolved_range(stock_lot, expected):
         assert "lot" in finding.matched_fields
     else:
         assert "lot_scope" in finding.missing_fields
+
+
+# -- lot near-misses: flagged for a person, never corrected -------------------
+
+
+@pytest.mark.parametrize("stock_lot", ["md4l07", "MD4LO7", "md4lo7", "Md4L07"])
+def test_lot_differing_only_by_case_or_o_zero_needs_evidence(stock_lot):
+    row = replace(STOCK_A, lot_raw=stock_lot)
+
+    finding = classify(row, NOTICE)
+
+    assert finding.state is MatchState.NEEDS_EVIDENCE
+    assert "lot" in finding.missing_fields
+    assert repr(stock_lot) in finding.next_evidence
+    assert "'MD4L07'" in finding.next_evidence
+    assert "not corrected" in finding.next_evidence
+    assert row.lot_raw == stock_lot  # raw value kept exactly as typed
+
+
+def test_lot_i_one_confusion_needs_evidence():
+    item = replace(NOTICE, lots=("AB1C3",))
+    row = replace(STOCK_A, lot_raw="ABIC3")
+
+    assert classify(row, item).state is MatchState.NEEDS_EVIDENCE
+
+
+@pytest.mark.parametrize("stock_lot", ["ZZ9TEST", "MD4L08", "MD4L077", "MD4L0"])
+def test_genuinely_different_lot_stays_not_matched(stock_lot):
+    row = replace(STOCK_A, lot_raw=stock_lot)
+
+    assert classify(row, NOTICE).state is MatchState.NOT_MATCHED

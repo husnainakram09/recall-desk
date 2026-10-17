@@ -58,7 +58,8 @@ product a batch belongs to, do not assign it: set that product's lot_scope to \
 "unspecified" and its lots to [].
 6. lot_scope:
    - "explicit_list" when the notice lists specific batches for the product. \
-"lots" must then be non-empty.
+"lots" must then be non-empty, and "span" must be the line that lists the \
+first batch (a table row), not a heading.
    - "all_lots" only when the notice explicitly says all batches are \
 affected. "span" must point at that statement and "lots" must be [].
    - "unspecified" otherwise, with "lots" set to [] and "span" null. A notice \

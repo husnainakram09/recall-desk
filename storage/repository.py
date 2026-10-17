@@ -1,9 +1,11 @@
 """Versioned SQLite persistence for synthetic RecallDesk cases."""
 
+import hashlib
 import json
+import re
 import sqlite3
 from contextlib import nullcontext
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from enum import Enum
 
@@ -16,8 +18,63 @@ from contracts import (
     NoticeItem,
     Strength,
 )
+from extraction.spans import split_spans
+from extraction.validate import appears_verbatim
 from matching.engine import classify
-from storage.review_policy import ReviewAction, validate_review_action
+from storage.review_policy import (
+    ReviewAction,
+    validate_review_action,
+    validate_review_note,
+)
+
+# notice_source_status values on CaseRevision.
+SOURCE_VERIFIED = "verified"  # stored text present and its SHA-256 matches
+SOURCE_MISSING = "missing"  # no source text stored for this notice version
+SOURCE_HASH_MISMATCH = "hash_mismatch"  # stored text no longer matches its hash
+
+
+@dataclass(frozen=True)
+class NoticeSource:
+    """Immutable copy of the notice text that a notice version came from.
+
+    Stored once per notice version and never updated, so a reopened case
+    shows exactly the excerpts that were cited when it was saved.
+    """
+
+    text: str
+    sha256: str
+    retrieved_at_utc: str  # when the notice was loaded into the app
+    origin: str  # "pdf" | "paste" | "fixture"
+    span_pages: dict[str, int] = field(default_factory=dict)
+    cited_excerpts: dict[str, str] = field(default_factory=dict)  # span id -> line
+
+
+def make_notice_source(
+    text: str,
+    *,
+    retrieved_at_utc: str,
+    origin: str,
+    cited_span_ids=(),
+    span_pages: dict[str, int] | None = None,
+) -> NoticeSource:
+    """Snapshot notice text with its hash and the lines its items cite."""
+    if not text.strip():
+        raise ValueError("Notice source text is empty.")
+    lines = {span.id: span.text for span in split_spans(text)}
+    unknown = sorted(set(cited_span_ids) - set(lines))
+    if unknown:
+        raise ValueError(f"Cited spans are not in the source text: {unknown}")
+    return NoticeSource(
+        text=text,
+        sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        retrieved_at_utc=retrieved_at_utc,
+        origin=origin,
+        span_pages=dict(span_pages or {}),
+        # In document order (S2 before S10), as a reader meets them.
+        cited_excerpts={
+            sid: line for sid, line in lines.items() if sid in set(cited_span_ids)
+        },
+    )
 
 
 @dataclass(frozen=True)
@@ -50,12 +107,13 @@ class CaseRevision:
     scope_reviewed: bool
     created_at_utc: str
     extraction_provenance: ExtractionProvenance | None = None
+    change_note: str | None = None  # why this revision was saved
+    notice_source: NoticeSource | None = None
+    notice_source_status: str = SOURCE_MISSING
 
 
 def _timestamp() -> str:
-    return datetime.now(UTC).isoformat(
-        timespec="seconds"
-    ).replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _enum_default(value):
@@ -128,14 +186,21 @@ def create_case(
     source_verified: bool = False,
     scope_reviewed: bool = False,
     extraction_provenance: ExtractionProvenance | None = None,
+    notice_source: NoticeSource | None = None,
 ) -> int:
-    """Atomically create a case and its first evidence snapshot."""
+    """Atomically create a case and its first evidence snapshot.
+
+    Without a notice_source the case can be saved and exported, but review
+    decisions stay blocked until a source is attached.
+    """
     notice_items = tuple(notice_items)
     stock_rows = tuple(stock_rows)
     _validate_records(notice_items, stock_rows)
 
     if not case_id.strip() or not source_url.strip():
         raise ValueError("Case ID and source URL are required.")
+    if notice_source is not None:
+        _check_source_covers(notice_source, notice_items)
 
     timestamp = _timestamp()
     provenance_json = (
@@ -153,22 +218,137 @@ def create_case(
             """,
             (case_id, source_url, timestamp, provenance_json),
         )
-        conn.execute(
-            """
-            INSERT INTO case_versions VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                case_id, 1, 1, 1,
-                _encode(notice_items),
-                _encode(stock_rows),
-                int(source_verified),
-                int(scope_reviewed),
-                timestamp,
-            ),
+        _insert_version(
+            conn,
+            case_id,
+            1,
+            1,
+            1,
+            notice_items,
+            stock_rows,
+            source_verified,
+            scope_reviewed,
+            timestamp,
+            "Case created",
         )
+        if notice_source is not None:
+            _insert_source(conn, case_id, 1, notice_source)
 
     return 1
+
+
+def _insert_version(
+    conn,
+    case_id,
+    revision,
+    notice_version,
+    stock_version,
+    notice_items,
+    stock_rows,
+    source_verified,
+    scope_reviewed,
+    timestamp,
+    change_note,
+):
+    conn.execute(
+        """
+        INSERT INTO case_versions (
+            case_id, revision, notice_version, stock_version,
+            notice_json, stock_json, source_verified, scope_reviewed,
+            created_at_utc, change_note
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            case_id,
+            revision,
+            notice_version,
+            stock_version,
+            _encode(notice_items),
+            _encode(stock_rows),
+            int(source_verified),
+            int(scope_reviewed),
+            timestamp,
+            change_note,
+        ),
+    )
+
+
+def _insert_source(conn, case_id, notice_version, source: NoticeSource):
+    conn.execute(
+        """
+        INSERT INTO notice_sources (
+            case_id, notice_version, source_text, sha256, retrieved_at_utc,
+            origin, span_pages_json, cited_excerpts_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            case_id,
+            notice_version,
+            source.text,
+            source.sha256,
+            source.retrieved_at_utc,
+            source.origin,
+            json.dumps(source.span_pages, sort_keys=True),
+            # Not sort_keys: cited lines keep document order (S2 before S10).
+            json.dumps(source.cited_excerpts, ensure_ascii=False),
+        ),
+    )
+
+
+def _check_source_covers(
+    source: NoticeSource, notice_items, *, identifiers: bool = False
+) -> None:
+    """Every cited span must exist in the source.
+
+    With identifiers=True (attaching a source to an existing case), every
+    lot and code must also appear in it verbatim, so the wrong notice
+    cannot be attached. A PL number is checked without its "PL" label.
+    """
+    lines = {span.id for span in split_spans(source.text)}
+    for item in notice_items:
+        missing_spans = sorted(set(item.evidence_span_ids) - lines)
+        if missing_spans:
+            raise ValueError(
+                f"Notice item {item.name!r} cites spans not in the source: "
+                f"{missing_spans}"
+            )
+        if not identifiers:
+            continue
+        values = list(item.lots) + [
+            _PL_LABEL.sub("", code.value.strip())
+            if code.system == "UK_PL"
+            else code.value
+            for code in item.codes
+        ]
+        absent = [value for value in values if not appears_verbatim(value, source.text)]
+        if absent:
+            raise ValueError(
+                f"Identifiers {absent} of {item.name!r} are not in this source text."
+            )
+
+
+_PL_LABEL = re.compile(r"^PL[\s:.]*")
+
+
+def _load_source(conn, case_id, notice_version):
+    record = conn.execute(
+        "SELECT * FROM notice_sources WHERE case_id = ? AND notice_version = ?",
+        (case_id, notice_version),
+    ).fetchone()
+    if record is None:
+        return None, SOURCE_MISSING
+    source = NoticeSource(
+        text=record["source_text"],
+        sha256=record["sha256"],
+        retrieved_at_utc=record["retrieved_at_utc"],
+        origin=record["origin"],
+        span_pages=json.loads(record["span_pages_json"]),
+        cited_excerpts=json.loads(record["cited_excerpts_json"]),
+    )
+    actual = hashlib.sha256(source.text.encode("utf-8")).hexdigest()
+    if actual != source.sha256:
+        return None, SOURCE_HASH_MISMATCH
+    return source, SOURCE_VERIFIED
 
 
 def get_revision(
@@ -195,20 +375,18 @@ def get_revision(
     if record is None:
         raise KeyError(f"Case revision not found: {case_id}, {revision}")
 
+    source, source_status = _load_source(
+        conn, record["case_id"], record["notice_version"]
+    )
+
     return CaseRevision(
         case_id=record["case_id"],
         source_url=record["source_url"],
         revision=record["revision"],
         notice_version=record["notice_version"],
         stock_version=record["stock_version"],
-        notice_items=tuple(
-            _notice(item)
-            for item in json.loads(record["notice_json"])
-        ),
-        stock_rows=tuple(
-            _stock(row)
-            for row in json.loads(record["stock_json"])
-        ),
+        notice_items=tuple(_notice(item) for item in json.loads(record["notice_json"])),
+        stock_rows=tuple(_stock(row) for row in json.loads(record["stock_json"])),
         source_verified=bool(record["source_verified"]),
         scope_reviewed=bool(record["scope_reviewed"]),
         created_at_utc=record["created_at_utc"],
@@ -217,6 +395,9 @@ def get_revision(
             if record["extraction_provenance_json"]
             else None
         ),
+        change_note=record["change_note"],
+        notice_source=source,
+        notice_source_status=source_status,
     )
 
 
@@ -229,32 +410,26 @@ def append_revision(
     expected_revision: int | None = None,
     source_verified: bool = False,
     scope_reviewed: bool = False,
+    change_note: str | None = None,
     _manage_transaction: bool = True,
 ) -> int:
     """Append new evidence; never modify the previous snapshot.
 
     Review flags default to false so a new revision cannot
-    silently inherit an earlier verification.
+    silently inherit an earlier verification. A changed notice starts a
+    new notice version with no stored source, which blocks decisions
+    until its source is attached.
     """
     with conn if _manage_transaction else nullcontext():
         previous = get_revision(conn, case_id)
 
-        if (
-           expected_revision is not None
-           and previous.revision != expected_revision
-        ):
-           raise ValueError(
-               "Stale revision: reopen the case before editing."
-        )
+        if expected_revision is not None and previous.revision != expected_revision:
+            raise ValueError("Stale revision: reopen the case before editing.")
 
         new_notice = tuple(
-            previous.notice_items if notice_items is None
-            else notice_items
+            previous.notice_items if notice_items is None else notice_items
         )
-        new_stock = tuple(
-            previous.stock_rows if stock_rows is None
-            else stock_rows
-        )
+        new_stock = tuple(previous.stock_rows if stock_rows is None else stock_rows)
         _validate_records(new_notice, new_stock)
 
         notice_changed = new_notice != previous.notice_items
@@ -268,24 +443,38 @@ def append_revision(
             raise ValueError("No new evidence or review changes.")
 
         revision = previous.revision + 1
+        notice_version = previous.notice_version + int(notice_changed)
 
-        conn.execute(
-            """
-            INSERT INTO case_versions VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                case_id,
-                revision,
-                previous.notice_version + int(notice_changed),
-                previous.stock_version + int(stock_changed),
-                _encode(new_notice),
-                _encode(new_stock),
-                int(source_verified),
-                int(scope_reviewed),
-                _timestamp(),
-            ),
+        _insert_version(
+            conn,
+            case_id,
+            revision,
+            notice_version,
+            previous.stock_version + int(stock_changed),
+            new_notice,
+            new_stock,
+            source_verified,
+            scope_reviewed,
+            _timestamp(),
+            change_note,
         )
+
+        # Revised notice items still come from the same source document:
+        # carry it forward, re-quoting the lines the new items cite.
+        if notice_changed and previous.notice_source is not None:
+            cited = {sid for item in new_notice for sid in item.evidence_span_ids}
+            try:
+                carried = make_notice_source(
+                    previous.notice_source.text,
+                    retrieved_at_utc=previous.notice_source.retrieved_at_utc,
+                    origin=previous.notice_source.origin,
+                    cited_span_ids=cited,
+                    span_pages=previous.notice_source.span_pages,
+                )
+            except ValueError:
+                carried = None  # new items cite lines the source lacks
+            if carried is not None:
+                _insert_source(conn, case_id, notice_version, carried)
 
     return revision
 
@@ -463,6 +652,15 @@ def record_review_decision(
     if not (snapshot.source_verified and snapshot.scope_reviewed):
         raise ValueError("Source and scope review are incomplete.")
 
+    if snapshot.notice_source_status != SOURCE_VERIFIED:
+        raise ValueError(
+            "The notice source text for this revision is unavailable or failed "
+            "its integrity check. Attach the source and re-review before "
+            "recording decisions."
+        )
+
+    validate_review_note(action, note)
+
     record = conn.execute(
         """
         SELECT state FROM findings
@@ -547,9 +745,7 @@ def load_review_decisions(
             reviewer_role=record["reviewer_role"],
             note=record["note"],
             decided_at_utc=record["decided_at_utc"],
-            is_current=(
-                record["revision"] == current_revision
-            ),
+            is_current=(record["revision"] == current_revision),
         )
         for record in records
     )
@@ -602,8 +798,13 @@ def correct_stock_lot(
     expected_revision: int,
     row_id: str,
     lot_raw: str | None,
+    reason: str | None = None,
 ) -> int:
-    """Save a batch correction as a new unverified evidence revision."""
+    """Save a batch correction as a new unverified evidence revision.
+
+    reason records where the corrected batch was read; the PDF shows it with
+    the before and after values.
+    """
     snapshot = get_revision(conn, case_id)
 
     if snapshot.revision != expected_revision:
@@ -626,9 +827,7 @@ def correct_stock_lot(
         raise ValueError("Batch code is unchanged.")
 
     revised_stock = tuple(
-        replace(row, lot_raw=new_lot)
-        if row.row_id == row_id
-        else row
+        replace(row, lot_raw=new_lot) if row.row_id == row_id else row
         for row in snapshot.stock_rows
     )
 
@@ -638,6 +837,11 @@ def correct_stock_lot(
             case_id,
             stock_rows=revised_stock,
             expected_revision=expected_revision,
+            change_note=(
+                f"Batch correction for row {row_id}: "
+                f"{target.lot_raw!r} -> {new_lot!r}. "
+                f"Reason: {reason.strip() if reason and reason.strip() else 'not recorded'}"
+            ),
             _manage_transaction=False,
         )
 
@@ -677,6 +881,7 @@ def rereview_case(
             expected_revision=expected_revision,
             source_verified=True,
             scope_reviewed=True,
+            change_note="Source and lot scope re-reviewed (self-attested)",
             _manage_transaction=False,
         )
         store_findings(
@@ -686,4 +891,43 @@ def rereview_case(
             _manage_transaction=False,
         )
 
+    return revision
+
+
+def attach_notice_source(
+    conn: sqlite3.Connection,
+    case_id: str,
+    *,
+    expected_revision: int,
+    notice_source: NoticeSource,
+) -> int:
+    """Recover a case whose notice version has no stored source text.
+
+    The source must contain every cited span and every listed identifier.
+    Attaching resets source/scope review, so decisions need a fresh
+    re-review. Returns the revision to review next.
+    """
+    with conn:
+        snapshot = get_revision(conn, case_id)
+        if snapshot.revision != expected_revision:
+            raise ValueError("Stale revision: reopen the case before editing.")
+        if snapshot.notice_source_status != SOURCE_MISSING:
+            raise ValueError(
+                "This notice version already has stored source text. "
+                "Save a new case to use a different source."
+            )
+        _check_source_covers(notice_source, snapshot.notice_items, identifiers=True)
+        _insert_source(conn, case_id, snapshot.notice_version, notice_source)
+
+        if not (snapshot.source_verified or snapshot.scope_reviewed):
+            return snapshot.revision
+
+        revision = append_revision(
+            conn,
+            case_id,
+            expected_revision=expected_revision,
+            change_note="Notice source text attached; re-review required",
+            _manage_transaction=False,
+        )
+        store_findings(conn, case_id, revision, _manage_transaction=False)
     return revision

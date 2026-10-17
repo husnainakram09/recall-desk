@@ -1,4 +1,3 @@
-
 """Tests for discovering saved cases after application restart."""
 
 from dataclasses import replace
@@ -41,9 +40,7 @@ def test_saved_case_can_be_discovered_after_reopen(tmp_path):
         assert len(cases) == 1
         assert cases[0].case_id == "RESUME-001"
         assert cases[0].latest_revision == 2
-        assert cases[0].source_url == (
-            "https://example.org/synthetic-notice"
-        )
+        assert cases[0].source_url == ("https://example.org/synthetic-notice")
     finally:
         reopened.close()
 

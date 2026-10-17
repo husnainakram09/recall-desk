@@ -16,9 +16,7 @@ def db():
 
 
 def test_schema_has_required_tables(db):
-    rows = db.execute(
-        "SELECT name FROM sqlite_master WHERE type = 'table'"
-    ).fetchall()
+    rows = db.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
 
     names = {row["name"] for row in rows}
 
@@ -46,8 +44,14 @@ def test_revision_cannot_exist_without_case(db):
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                "nonexistent-case", 1, 1, 1,
-                "{}", "[]", 0, 0,
+                "nonexistent-case",
+                1,
+                1,
+                1,
+                "{}",
+                "[]",
+                0,
+                0,
                 "2026-10-14T00:00:00Z",
             ),
         )

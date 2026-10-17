@@ -2,6 +2,7 @@
 
 import re
 import sqlite3
+from datetime import UTC, datetime
 
 import streamlit as st
 from reportlab.platypus.doctemplate import LayoutError
@@ -22,8 +23,8 @@ def render() -> None:
     st.caption("Synthetic demonstration. Export does not approve any stock action.")
     st.warning(SAFETY_STATEMENT)
     st.caption(
-        "The PDF uses saved evidence and simulated decision history. "
-        "Current unsaved inputs and source excerpts are not included."
+        "The PDF uses saved evidence, the stored notice source snapshot and "
+        "simulated decision history. Unsaved session inputs are not included."
     )
 
     conn = None
@@ -71,9 +72,12 @@ def render() -> None:
                     mime="application/pdf",
                     on_click="ignore",
                 )
+                prepared = datetime.now(UTC).strftime("%H:%M:%S UTC")
                 st.caption(
-                    f"Prepared from revision {snapshot.revision}. If evidence "
-                    "changes, prepare a new report."
+                    f"Prepared at {prepared} from revision {snapshot.revision}. "
+                    "If the case changes, prepare a new report: this one stays "
+                    "tied to revision "
+                    f"{snapshot.revision}."
                 )
     except (sqlite3.Error, KeyError, ValueError, TypeError):
         st.error("The saved case could not be read. Check the local demo database.")

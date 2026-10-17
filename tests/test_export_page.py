@@ -91,9 +91,7 @@ def test_export_requires_selection_when_active_case_is_absent(export_database):
     assert not page.get("download_button")
 
 
-def test_download_contains_saved_evidence_and_safe_filename(
-    export_database, downloads
-):
+def test_download_contains_saved_evidence_and_safe_filename(export_database, downloads):
     case_id = "../SAVED:001"
     _save_case(export_database, case_id)
     page = AppTest.from_function(_render_export)
@@ -173,8 +171,7 @@ def test_unreviewed_export_warns_and_retains_status(export_database, downloads):
     assert any("review is incomplete" in warning.value for warning in page.warning)
     assert len(page.get("download_button")) == 1
     text = "\n".join(
-        sheet.extract_text()
-        for sheet in PdfReader(BytesIO(downloads[0]["data"])).pages
+        sheet.extract_text() for sheet in PdfReader(BytesIO(downloads[0]["data"])).pages
     )
     assert "check_incomplete" in text
     assert "Source check (self-attested): Not recorded" in text

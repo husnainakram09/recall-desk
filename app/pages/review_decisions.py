@@ -1,4 +1,3 @@
-
 """Simulated review actions and revision-bound decision history."""
 
 import sqlite3
@@ -10,10 +9,16 @@ from app.pages.review_cases import DB_PATH
 from contracts import MatchState
 from storage.db import connect
 from storage.repository import (
+    SOURCE_VERIFIED,
     load_review_decisions,
     record_review_decision,
 )
-from storage.review_policy import ReviewAction
+from storage.review_policy import (
+    MIN_NOTE_LENGTH,
+    NOTE_REQUIRED,
+    ReviewAction,
+    validate_review_note,
+)
 
 _ACTIONS = {
     MatchState.EXACT_CANDIDATE: (
@@ -33,6 +38,8 @@ _ACTIONS = {
         "Record non-match for this notice",
     ),
 }
+
+ACTION_LABELS = {action: label for action, label in _ACTIONS.values()}
 
 
 def render_review_decisions(saved_case, row_id, item_index, finding):
@@ -85,21 +92,40 @@ def render_review_decisions(saved_case, row_id, item_index, finding):
                 "This finding is incomplete. Review decisions "
                 "are blocked until required evidence is available."
             )
-        elif not (
-            saved_case.source_verified and saved_case.scope_reviewed
-        ):
+        elif not (saved_case.source_verified and saved_case.scope_reviewed):
             st.warning("Source and scope review are incomplete.")
+        elif saved_case.notice_source_status != SOURCE_VERIFIED:
+            st.warning(
+                "Decisions are blocked: the notice source text for this case "
+                "is unavailable. Attach it under the saved case above."
+            )
         else:
             action, label = choice
+            needs_note = action in NOTE_REQUIRED
 
-            with st.form(
+            # One form per finding: reviewer, note and action submit together.
+            # Enter does not submit, so a half-typed note is never saved.
+            key = (
                 f"decision_{saved_case.case_id}_"
                 f"{saved_case.revision}_{row_id}_{item_index}"
-            ):
-                reviewer = st.text_input("Demonstration reviewer label")
+            )
+            with st.form(key, enter_to_submit=False):
+                reviewer = st.text_input(
+                    "Demonstration reviewer label", key=f"{key}_reviewer"
+                )
                 note = st.text_area(
-                    "Review note",
-                    placeholder="Explain the simulated review action.",
+                    "Review note"
+                    + (
+                        f" (required, at least {MIN_NOTE_LENGTH} characters)"
+                        if needs_note
+                        else ""
+                    ),
+                    placeholder=(
+                        "Say what evidence is needed and from where."
+                        if needs_note
+                        else "Explain the simulated review action."
+                    ),
+                    key=f"{key}_note",
                 )
                 submitted = st.form_submit_button(
                     label,
@@ -108,13 +134,13 @@ def render_review_decisions(saved_case, row_id, item_index, finding):
 
             if role != "Pharmacist":
                 st.info(
-                    "Select the simulated Pharmacist role to "
-                    "record a review action."
+                    "Select the simulated Pharmacist role to record a review action."
                 )
 
             if submitted:
                 try:
-                    record_review_decision(
+                    validate_review_note(action, note)
+                    saved = record_review_decision(
                         conn,
                         saved_case.case_id,
                         saved_case.revision,
@@ -133,31 +159,26 @@ def render_review_decisions(saved_case, row_id, item_index, finding):
                 ) as exc:
                     st.error(f"Decision was not recorded: {exc}")
                 else:
-                    st.success("Simulated decision recorded in SQLite.")
-                    history = load_review_decisions(
-                        conn, saved_case.case_id
+                    st.success(
+                        f"Recorded '{label}' for row {row_id} by "
+                        f"{saved.reviewer_label}. Saved note: "
+                        f"{saved.note.strip() or '(none)'}"
                     )
+                    history = load_review_decisions(conn, saved_case.case_id)
 
         with st.expander("Review decision history", expanded=True):
             relevant = [
                 decision
                 for decision in history
-                if decision.row_id == row_id
-                and decision.item_index == item_index
+                if decision.row_id == row_id and decision.item_index == item_index
             ]
 
             if not relevant:
                 st.caption("No decisions recorded for this stock row.")
             else:
                 for decision in reversed(relevant):
-                    status = (
-                        "CURRENT"
-                        if decision.is_current
-                        else "HISTORICAL / STALE"
-                    )
-                    st.write(
-                        f"Revision {decision.revision} — {status}"
-                    )
+                    status = "CURRENT" if decision.is_current else "HISTORICAL / STALE"
+                    st.write(f"Revision {decision.revision} — {status}")
                     st.text(
                         f"Action: {decision.action.value}\n"
                         f"Reviewer: {decision.reviewer_label}\n"

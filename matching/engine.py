@@ -2,7 +2,7 @@
 
 from contracts import Finding, InventoryRow, LotScope, MatchState, NoticeItem
 from matching.identity import inspect_identity
-from matching.lots import lot_check
+from matching.lots import lot_check, near_miss_lot
 
 _CODE_NAMES = {"UK_PL": "PL number", "GTIN": "GTIN"}
 
@@ -85,6 +85,16 @@ def classify(row: InventoryRow, item: NoticeItem) -> Finding:
         return finding(
             MatchState.EXACT_CANDIDATE,
             "Pharmacist must verify the candidate against the source.",
+        )
+
+    near = near_miss_lot(row.lot_raw, item)
+    if near is not None:
+        missing.append("lot")
+        return finding(
+            MatchState.NEEDS_EVIDENCE,
+            f"The recorded batch {row.lot_raw!r} differs from the notice's "
+            f"{near!r} only by letter case or O/0, I/1. Read the batch on the "
+            "physical pack; it was not corrected automatically.",
         )
 
     return finding(

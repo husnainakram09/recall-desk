@@ -5,6 +5,7 @@ import sqlite3
 AUDIT_TABLES = (
     "cases",
     "case_versions",
+    "notice_sources",
     "findings",
     "approvals",
     "review_decisions",

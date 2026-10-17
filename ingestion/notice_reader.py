@@ -7,6 +7,7 @@ Extracted text is returned as pypdf produced it; nothing is cleaned up.
 
 import io
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
@@ -20,12 +21,17 @@ class NoticeReadError(ValueError):
     pass
 
 
+def _now_utc() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 @dataclass(frozen=True)
 class NoticeText:
     text: str
     spans: tuple[Span, ...]
-    source: str  # "pdf" | "paste"
+    source: str  # "pdf" | "paste" | "fixture"
     span_pages: dict[str, int] = field(default_factory=dict)  # PDF only, 1-based
+    loaded_at_utc: str = field(default_factory=_now_utc)  # when read into the app
 
 
 def read_pasted(text: str) -> NoticeText:

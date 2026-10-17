@@ -1,4 +1,3 @@
-
 """Tests for the simulated review-decision policy."""
 
 import pytest

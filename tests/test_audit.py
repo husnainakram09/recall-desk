@@ -34,9 +34,7 @@ def db(tmp_path):
 
 
 def test_source_reference_cannot_be_overwritten(db):
-    with pytest.raises(
-        sqlite3.IntegrityError, match="append-only"
-    ):
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
         db.execute(
             """
             UPDATE cases
@@ -46,15 +44,11 @@ def test_source_reference_cannot_be_overwritten(db):
             ("https://example.org/changed", "AUDIT-001"),
         )
 
-    assert get_revision(
-        db, "AUDIT-001"
-    ).source_url == "https://example.org/synthetic"
+    assert get_revision(db, "AUDIT-001").source_url == "https://example.org/synthetic"
 
 
 def test_stock_snapshot_cannot_be_overwritten(db):
-    with pytest.raises(
-        sqlite3.IntegrityError, match="append-only"
-    ):
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
         db.execute(
             """
             UPDATE case_versions
@@ -64,17 +58,13 @@ def test_stock_snapshot_cannot_be_overwritten(db):
             ("AUDIT-001",),
         )
 
-    assert get_revision(
-        db, "AUDIT-001", 1
-    ).stock_rows == (STOCK,)
+    assert get_revision(db, "AUDIT-001", 1).stock_rows == (STOCK,)
 
 
 def test_stored_finding_cannot_be_deleted(db):
     store_findings(db, "AUDIT-001")
 
-    with pytest.raises(
-        sqlite3.IntegrityError, match="append-only"
-    ):
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
         db.execute(
             "DELETE FROM findings WHERE case_id = ?",
             ("AUDIT-001",),
@@ -89,16 +79,15 @@ def test_new_revision_still_allowed(db):
 
     updated = replace(STOCK, lot_raw="00099")
 
-    assert append_revision(
-        db,
-        "AUDIT-001",
-        stock_rows=[updated],
-    ) == 2
+    assert (
+        append_revision(
+            db,
+            "AUDIT-001",
+            stock_rows=[updated],
+        )
+        == 2
+    )
 
-    assert get_revision(
-        db, "AUDIT-001", 1
-    ).stock_rows[0].lot_raw == "00123"
+    assert get_revision(db, "AUDIT-001", 1).stock_rows[0].lot_raw == "00123"
 
-    assert get_revision(
-        db, "AUDIT-001", 2
-    ).stock_rows[0].lot_raw == "00099"
+    assert get_revision(db, "AUDIT-001", 2).stock_rows[0].lot_raw == "00099"

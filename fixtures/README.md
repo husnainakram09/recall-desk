@@ -42,6 +42,23 @@ any real product.
 `stock_edge_cases.csv` is also synthetic. It exercises PL label forms, a
 miskeyed GTIN, a mislabelled carton, lot spacing, case and O/0 typos, a lot
 range, missing evidence and four rows that must fail to parse (lines 14-17).
+Expected against EL(25)A/17:
+
+| Row | Case | Expected |
+| --- | --- | --- |
+| X01, X02 | PL typed `PL 04595/0011` / `PL: 04595/0011` | exact_candidate |
+| X03 | PL with a dropped leading zero | conflicting_identifiers |
+| X04 | Same ingredient, no PL, GTIN off by one digit | conflicting_identifiers |
+| X05 | Carton keyed as the 10 mg product, lot MD4L07 | conflicting_identifiers |
+| X06 | Lot with surrounding spaces | exact_candidate |
+| X07, X08 | Lot `md4l07` / `MD4LO7` (case, letter O) | needs_evidence; never auto-corrected |
+| X09 | Lot range `MD4L05-MD4L09` | needs_evidence |
+| X10-X12 | No codes / no strength / no pack size | needs_evidence |
+| Lines 14-17 | Bad expiry, bad quantity, duplicate row ID, blank product | parse errors |
+
+Lot policy: identifiers are kept exactly as typed. Surrounding spaces are
+ignored when comparing. A lot that differs from a listed lot only by letter
+case or O/0, I/1 is flagged for a person to check, never corrected.
 
 "Not matched to this notice" only means the row did not match this notice. It
 does not establish that the stock is safe.

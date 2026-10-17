@@ -5,6 +5,7 @@ they look identical on every page. All text is HTML-escaped before rendering:
 notice and CSV content is untrusted.
 """
 
+import re
 from dataclasses import dataclass
 from html import escape
 
@@ -69,6 +70,8 @@ _CSS = """
   color: #5B6773; margin-bottom: .2rem;
 }
 .rd-card-source .rd-quote { white-space: pre-wrap; overflow-wrap: anywhere; }
+.rd-context { color: #6B7785; font-size: .82rem; border-bottom: 1px dashed #D5DDE4;
+  margin-bottom: .2rem; padding-bottom: .1rem; }
 .rd-card mark { background: #FFE9A8; padding: 0; }
 .rd-source { font-size: .88rem; }
 .rd-span { display: grid; grid-template-columns: 3.2em minmax(0, 1fr);
@@ -130,8 +133,13 @@ def evidence_card(
     span_id: str | None = None,
     page: int | None = None,
     is_identifier: bool = False,
+    context: str | None = None,
 ) -> None:
-    """Extracted value on the left, verbatim source excerpt on the right."""
+    """Extracted value on the left, verbatim source excerpt on the right.
+
+    context is the source line before the cited one (often the table's
+    column headings), shown muted so the cited value can be read in place.
+    """
     if value is None:
         shown = '<span class="rd-absent">not stated</span>'
     elif is_identifier:
@@ -148,6 +156,8 @@ def evidence_card(
         if excerpt is not None
         else '<span class="rd-absent">no source span</span>'
     )
+    if context is not None and excerpt is not None:
+        quote = f'<div class="rd-context">{escape(context)}</div>{quote}'
     st.markdown(
         f'<div class="rd-card">'
         f'<div><div class="rd-card-label">{escape(label)}</div>{shown}</div>'
@@ -175,11 +185,18 @@ def source_panel(
 
 
 def _highlight(excerpt: str, value: str | None) -> str:
-    """Mark the first exact occurrence of value in the excerpt, if any."""
-    at = excerpt.find(value) if value else -1
-    if at < 0:
+    """Mark the first whole-value occurrence of value in the excerpt.
+
+    "28" marks a standalone 28, never the 28 inside "01/2028".
+    """
+    match = (
+        re.search(rf"(?<![A-Za-z0-9]){re.escape(value)}(?![A-Za-z0-9])", excerpt)
+        if value
+        else None
+    )
+    if match is None:
         return escape(excerpt)
-    end = at + len(value)
+    at, end = match.span()
     return (
         f"{escape(excerpt[:at])}<mark>{escape(excerpt[at:end])}</mark>"
         f"{escape(excerpt[end:])}"

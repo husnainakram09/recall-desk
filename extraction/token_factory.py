@@ -87,7 +87,15 @@ class TokenFactoryAdapter:
                 f"{resp.text[:500]}"
             )
 
-        content = body["choices"][0]["message"]["content"]
+        try:
+            content = body["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ExtractionError(
+                f"HTTP {resp.status_code} response has no model message: "
+                f"{resp.text[:300]}"
+            ) from exc
+        if not isinstance(content, str):
+            raise ExtractionError("Model message content is not text.")
         try:
             parsed = json.loads(_strip_code_fence(content))
         except json.JSONDecodeError as exc:

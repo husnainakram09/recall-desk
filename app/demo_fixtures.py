@@ -1,6 +1,7 @@
 """Load the demo fixtures from fixtures/. See fixtures/README.md."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from ingestion.notice_reader import NoticeText, read_pasted
@@ -19,4 +20,5 @@ def stock_csv_text() -> str:
 
 def notice() -> tuple[NoticeText, dict]:
     meta = json.loads(NOTICE_META.read_text(encoding="utf-8"))
-    return read_pasted(NOTICE_TXT.read_text(encoding="utf-8")), meta
+    text = read_pasted(NOTICE_TXT.read_text(encoding="utf-8"))
+    return replace(text, source="fixture"), meta

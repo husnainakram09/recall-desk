@@ -1,4 +1,3 @@
-
 """Policy for simulated human review decisions.
 
 This module does not authenticate pharmacists or authorize
@@ -32,9 +31,7 @@ def validate_review_action(
 ) -> None:
     """Reject unsupported or unauthorized demo decisions."""
     if role != "Pharmacist":
-        raise PermissionError(
-            "Only the simulated Pharmacist role can review."
-        )
+        raise PermissionError("Only the simulated Pharmacist role can review.")
 
     if not isinstance(state, MatchState):
         raise TypeError("state must be a MatchState.")
@@ -43,6 +40,20 @@ def validate_review_action(
         raise TypeError("action must be a ReviewAction.")
 
     if _ALLOWED.get(state) is not action:
+        raise ValueError(f"Decision {action.value} is invalid for {state.value}.")
+
+
+# Actions that hand work to someone else must say what is needed.
+NOTE_REQUIRED = frozenset(
+    {ReviewAction.REQUEST_EVIDENCE, ReviewAction.ESCALATE_CONFLICT}
+)
+MIN_NOTE_LENGTH = 10
+
+
+def validate_review_note(action: ReviewAction, note: str) -> None:
+    """Evidence requests and escalations need a note a colleague can act on."""
+    if action in NOTE_REQUIRED and len((note or "").strip()) < MIN_NOTE_LENGTH:
         raise ValueError(
-            f"Decision {action.value} is invalid for {state.value}."
+            f"A note of at least {MIN_NOTE_LENGTH} characters is required to "
+            f"{action.value.replace('_', ' ')}: say what evidence is needed."
         )

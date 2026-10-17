@@ -81,11 +81,47 @@ def render() -> None:
     def shade(row: pd.Series) -> list[str]:
         return [_ERROR_BG if row["status"] != "OK" else ""] * len(row)
 
-    st.dataframe(
-        preview.style.apply(shade, axis=1),
-        hide_index=True,
-        column_config={
-            "line": st.column_config.NumberColumn("Line", width="small"),
-            "status": st.column_config.TextColumn("Parse result", width="large"),
-        },
+    overview_tab, parse_tab = st.tabs(
+        [f"Stock overview ({good} rows)", f"Parse check ({bad} with errors)"]
     )
+    with overview_tab:
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Row": row.row_id,
+                        "Location": row.location,
+                        "Product (as recorded)": row.product_raw,
+                        "Strength": (
+                            f"{row.strength.value:g} {row.strength.unit}"
+                            if row.strength
+                            else "-"
+                        ),
+                        "Batch": row.lot_raw if row.lot_raw is not None else "(blank)",
+                        "Expiry": row.expiry_raw or "-",
+                        "Pack": row.pack_size if row.pack_size is not None else "-",
+                        "Qty": f"{row.quantity} {row.unit}",
+                        "PL": next(
+                            (c.value for c in row.codes if c.system == "UK_PL"), "-"
+                        ),
+                        "GTIN": next(
+                            (c.value for c in row.codes if c.system == "GTIN"), "-"
+                        ),
+                    }
+                    for row in result.rows
+                ]
+            ).astype(str),
+            hide_index=True,
+        )
+        st.caption(
+            "Identifiers are shown exactly as recorded. Blank batches stay blank."
+        )
+    with parse_tab:
+        st.dataframe(
+            preview.style.apply(shade, axis=1),
+            hide_index=True,
+            column_config={
+                "line": st.column_config.NumberColumn("Line", width="small"),
+                "status": st.column_config.TextColumn("Parse result", width="large"),
+            },
+        )

@@ -1,4 +1,3 @@
-
 """Database-level integrity tests for simulated review decisions."""
 
 import sqlite3
@@ -67,9 +66,7 @@ def _insert(
 def test_valid_decision_is_stored(db):
     _insert(db)
 
-    record = db.execute(
-        "SELECT * FROM review_decisions"
-    ).fetchone()
+    record = db.execute("SELECT * FROM review_decisions").fetchone()
 
     assert record["revision"] == 1
     assert record["action"] == "acknowledge_candidate"
@@ -118,9 +115,7 @@ def test_stale_revision_cannot_receive_new_decision(db):
     )
 
     # Historical record is retained.
-    count = db.execute(
-        "SELECT COUNT(*) FROM review_decisions"
-    ).fetchone()[0]
+    count = db.execute("SELECT COUNT(*) FROM review_decisions").fetchone()[0]
 
     assert count == 1
 

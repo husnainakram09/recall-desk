@@ -40,7 +40,21 @@ def init_db(conn: sqlite3.Connection) -> None:
             scope_reviewed INTEGER NOT NULL
                 CHECK (scope_reviewed IN (0, 1)),
             created_at_utc TEXT NOT NULL,
+            change_note TEXT,
             PRIMARY KEY (case_id, revision),
+            FOREIGN KEY (case_id) REFERENCES cases(case_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS notice_sources (
+            case_id TEXT NOT NULL,
+            notice_version INTEGER NOT NULL CHECK (notice_version >= 1),
+            source_text TEXT NOT NULL,
+            sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+            retrieved_at_utc TEXT NOT NULL,
+            origin TEXT NOT NULL,
+            span_pages_json TEXT NOT NULL,
+            cited_excerpts_json TEXT NOT NULL,
+            PRIMARY KEY (case_id, notice_version),
             FOREIGN KEY (case_id) REFERENCES cases(case_id)
         );
 
@@ -152,5 +166,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     columns = {row[1] for row in conn.execute("PRAGMA table_info(cases)")}
     if "extraction_provenance_json" not in columns:
         conn.execute("ALTER TABLE cases ADD COLUMN extraction_provenance_json TEXT")
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(case_versions)")}
+    if "change_note" not in columns:
+        conn.execute("ALTER TABLE case_versions ADD COLUMN change_note TEXT")
 
     install_append_only_guards(conn)

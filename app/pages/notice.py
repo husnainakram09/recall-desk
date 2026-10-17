@@ -93,7 +93,12 @@ def _load_notice() -> NoticeText | None:
     if previous is None or previous.text != notice.text:
         st.session_state[session.NOTICE_SOURCE] = source_meta
         st.session_state[session.NOTICE_TEXT] = notice
-        for key in (session.EXTRACTION, session.CALL_META, session.VALIDATION_ERRORS):
+        for key in (
+            session.EXTRACTION,
+            session.CALL_META,
+            session.VALIDATION_ERRORS,
+            session.FAILED_CALL,
+        ):
             st.session_state[key] = None
         _set_draft([], None)
     _attribution()
@@ -119,10 +124,15 @@ def _actions(notice: NoticeText) -> None:
         _run_extraction(notice)
     if c2.button("Start manual draft"):
         st.session_state[session.VALIDATION_ERRORS] = None
+        st.session_state[session.FAILED_CALL] = None
         _set_draft([BLANK_ITEM], None)
 
+    failed = st.session_state.get(session.FAILED_CALL)
+    if failed is not None:
+        _failed_call(*failed)
+
     meta = st.session_state.get(session.CALL_META)
-    if meta is not None:
+    if meta is not None and st.session_state.get(session.EXTRACTION) is not None:
         _call_meta(meta, st.session_state.get(session.EXTRACTION))
 
 
@@ -133,22 +143,41 @@ def _run_extraction(notice: NoticeText) -> None:
         st.error(f"{exc} Start a manual draft meanwhile.")
         return
 
-    st.session_state[session.VALIDATION_ERRORS] = None
     try:
         with st.spinner("Extracting with the AMD endpoint…"):
             result = extract_notice(adapter, notice.text)
     except NoticeValidationError as exc:
-        st.session_state[session.CALL_META] = adapter.last_call_meta
+        # The last good draft and its call metadata are kept.
+        st.session_state[session.FAILED_CALL] = (
+            adapter.last_call_meta,
+            "The model's output failed validation twice and was discarded.",
+        )
         st.session_state[session.VALIDATION_ERRORS] = exc.errors
-        _set_draft([BLANK_ITEM], None)
+        if not st.session_state.get(session.DRAFT):
+            _set_draft([BLANK_ITEM], None)
         return
     except (ExtractionError, requests.RequestException) as exc:
-        st.session_state[session.CALL_META] = adapter.last_call_meta
-        st.error(f"Extraction call failed: {exc}")
+        st.session_state[session.FAILED_CALL] = (adapter.last_call_meta, str(exc)[:500])
         return
 
+    st.session_state[session.FAILED_CALL] = None
+    st.session_state[session.VALIDATION_ERRORS] = None
     st.session_state[session.CALL_META] = adapter.last_call_meta
     _set_draft(list(result.items), result)
+
+
+def _failed_call(meta: CallMeta | None, message: str) -> None:
+    details = (
+        f" HTTP {meta.status_code}, request ID {meta.request_id or 'not reported'}, "
+        f"{meta.latency_ms:,.0f} ms."
+        if meta is not None
+        else ""
+    )
+    kept = " Your current draft is kept." if st.session_state.get(session.DRAFT) else ""
+    st.error(
+        f"Extraction did not complete: {message}{details}{kept} "
+        "Run extraction again, or start a manual draft."
+    )
 
 
 def _call_meta(meta: CallMeta, extraction: ExtractedNotice | None) -> None:
@@ -207,6 +236,9 @@ def _draft_panel(notice: NoticeText) -> None:
 
     extraction: ExtractedNotice | None = st.session_state.get(session.EXTRACTION)
     spans = {s.id: s for s in notice.spans}
+    previous_line = {
+        s.id: notice.spans[i - 1].text for i, s in enumerate(notice.spans) if i
+    }
     labels = [_tab_label(i, item) for i, item in enumerate(draft)]
     for i, tab in enumerate(st.tabs(labels)):
         with tab:
@@ -232,6 +264,7 @@ def _draft_panel(notice: NoticeText) -> None:
                         sid,
                         notice.span_pages.get(sid),
                         is_identifier=is_id,
+                        context=previous_line.get(sid),
                     )
 
 

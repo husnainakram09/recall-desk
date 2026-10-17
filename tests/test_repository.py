@@ -16,6 +16,7 @@ from storage.repository import (
     append_revision,
     create_case,
     get_revision,
+    make_notice_source,
 )
 
 NOTICE = NoticeItem(
@@ -47,19 +48,33 @@ STOCK = InventoryRow(
 )
 
 
+# Synthetic notice text for tests; NOTICE cites its second line (S2).
+SOURCE = make_notice_source(
+    "SYNTHETIC TEST NOTICE - not issued by any regulator\n"
+    "Synthetic Test Medicine 20 mg tablet, GTIN 05012345678906, "
+    "batch 00123, pack size 28\n",
+    retrieved_at_utc="2026-10-17T00:00:00Z",
+    origin="paste",
+    cited_span_ids=("S2",),
+)
+
+
 def test_case_survives_database_reopen(tmp_path):
     path = tmp_path / "recalldesk.db"
 
     conn = connect(path)
     init_db(conn)
 
-    assert create_case(
-        conn,
-        "DEMO-001",
-        "https://example.org/synthetic-notice",
-        [NOTICE],
-        [STOCK],
-    ) == 1
+    assert (
+        create_case(
+            conn,
+            "DEMO-001",
+            "https://example.org/synthetic-notice",
+            [NOTICE],
+            [STOCK],
+        )
+        == 1
+    )
 
     conn.close()
 
@@ -81,8 +96,11 @@ def test_new_revision_preserves_original(tmp_path):
     init_db(conn)
 
     create_case(
-        conn, "DEMO-002", "https://example.org/test",
-        [NOTICE], [STOCK],
+        conn,
+        "DEMO-002",
+        "https://example.org/test",
+        [NOTICE],
+        [STOCK],
     )
 
     changed = replace(STOCK, lot_raw="00999")
@@ -113,8 +131,11 @@ def test_duplicate_stock_ids_are_rejected(tmp_path):
 
     with pytest.raises(ValueError, match="Duplicate"):
         create_case(
-            conn, "DEMO-003", "https://example.org/test",
-            [NOTICE], [STOCK, STOCK],
+            conn,
+            "DEMO-003",
+            "https://example.org/test",
+            [NOTICE],
+            [STOCK, STOCK],
         )
 
     conn.close()
@@ -125,8 +146,11 @@ def test_no_change_does_not_create_revision(tmp_path):
     init_db(conn)
 
     create_case(
-        conn, "DEMO-004", "https://example.org/test",
-        [NOTICE], [STOCK],
+        conn,
+        "DEMO-004",
+        "https://example.org/test",
+        [NOTICE],
+        [STOCK],
     )
 
     with pytest.raises(ValueError, match="No new evidence"):

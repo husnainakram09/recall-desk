@@ -18,7 +18,7 @@ from storage.repository import (
     store_findings,
 )
 from storage.review_policy import ReviewAction
-from tests.test_repository import NOTICE, STOCK
+from tests.test_repository import NOTICE, SOURCE, STOCK
 
 
 @pytest.fixture
@@ -34,6 +34,7 @@ def report_case():
         [STOCK],
         source_verified=True,
         scope_reviewed=True,
+        notice_source=SOURCE,
     )
     store_findings(conn, "REPORT-001")
 
@@ -235,6 +236,7 @@ def test_report_does_not_mix_concurrent_revisions(tmp_path, monkeypatch):
             [STOCK],
             source_verified=True,
             scope_reviewed=True,
+            notice_source=SOURCE,
         )
         store_findings(reader, "CONCURRENT")
         record_review_decision(

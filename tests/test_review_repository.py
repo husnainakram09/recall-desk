@@ -1,4 +1,3 @@
-
 """Integration tests for version-bound review records."""
 
 import sqlite3
@@ -20,7 +19,7 @@ from storage.repository import (
     store_findings,
 )
 from storage.review_policy import ReviewAction
-from tests.test_repository import NOTICE, STOCK
+from tests.test_repository import NOTICE, SOURCE, STOCK
 
 
 @pytest.fixture
@@ -37,6 +36,7 @@ def ready_case(tmp_path):
         [STOCK],
         source_verified=True,
         scope_reviewed=True,
+        notice_source=SOURCE,
     )
     store_findings(conn, "DEMO-REVIEW")
 
@@ -76,9 +76,7 @@ def test_decision_survives_reopening(ready_case):
 
     reopened = connect(path)
     try:
-        assert load_review_decisions(
-            reopened, "DEMO-REVIEW"
-        ) == (expected,)
+        assert load_review_decisions(reopened, "DEMO-REVIEW") == (expected,)
     finally:
         reopened.close()
 
@@ -278,9 +276,7 @@ def test_rereview_restores_findings_without_changing_evidence(ready_case):
     )
     before = get_revision(conn, "DEMO-REVIEW")
 
-    revision = rereview_case(
-        conn, "DEMO-REVIEW", expected_revision=2
-    )
+    revision = rereview_case(conn, "DEMO-REVIEW", expected_revision=2)
 
     reopened = connect(path)
     try:
@@ -312,9 +308,7 @@ def test_rereview_restores_findings_without_changing_evidence(ready_case):
     ("source_verified", "scope_reviewed"),
     [(False, False), (True, False), (False, True)],
 )
-def test_rereview_renews_both_flags(
-    ready_case, source_verified, scope_reviewed
-):
+def test_rereview_renews_both_flags(ready_case, source_verified, scope_reviewed):
     conn, _ = ready_case
     append_revision(
         conn,

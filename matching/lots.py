@@ -34,6 +34,32 @@ def _possible_range(value: str) -> bool:
     return False
 
 
+# Characters staff commonly confuse when reading or typing a batch code.
+_CONFUSABLE = str.maketrans({"o": "0", "i": "1"})
+
+
+def _confusable_key(value: str) -> str:
+    return value.strip().casefold().translate(_CONFUSABLE)
+
+
+def near_miss_lot(lot_raw: str | None, item: NoticeItem) -> str | None:
+    """The listed lot that the stock lot matches only after ignoring letter
+    case and O/0, I/1 differences, or None.
+
+    Used to flag a likely typo for a person to check. The recorded lot is
+    never corrected: it stays exactly as typed.
+    """
+    if item.lot_scope is not LotScope.EXPLICIT_LIST:
+        return None
+    if lot_raw is None or not lot_raw.strip():
+        return None
+    key = _confusable_key(lot_raw)
+    for lot in item.lots:
+        if lot.strip() != lot_raw.strip() and _confusable_key(lot) == key:
+            return lot
+    return None
+
+
 def lot_check(lot_raw: str | None, item: NoticeItem) -> str:
     """Return match, different, missing, ambiguous or incomplete."""
     if item.lot_scope is LotScope.UNSPECIFIED:
@@ -59,10 +85,7 @@ def lot_check(lot_raw: str | None, item: NoticeItem) -> str:
         return "ambiguous"
 
     # Trust exact literal identifiers only, not range expressions.
-    if any(
-        stock_lot == lot and not _possible_range(lot)
-        for lot in notice_lots
-    ):
+    if any(stock_lot == lot and not _possible_range(lot) for lot in notice_lots):
         return "match"
 
     # A non-exact stock lot might belong to an unresolved range.
